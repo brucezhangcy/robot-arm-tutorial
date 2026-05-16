@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5 · Position Control — Cartesian Space — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html" class="active">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#pose-representation">5.1 Pose Representation</a></li>
+          <li><a href="#orientation">5.2 Orientation in 3D</a></li>
+          <li><a href="#pose-goals">5.3 Pose Goals in MoveIt&nbsp;2</a></li>
+          <li><a href="#cartesian-paths">5.4 Straight-Line Cartesian Paths</a></li>
+          <li><a href="#frames">5.5 Reference Frames</a></li>
+          <li><a href="#code">5.6 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 5</span>
+    <h1>Position Control — Cartesian Space</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      Chapter&nbsp;4 moved the arm by specifying where each joint should end up. This chapter
+      specifies where the <em>end-effector</em> should end up — its position in meters and its
+      orientation in space. You will learn how a 3D pose is represented mathematically, how
+      MoveIt&nbsp;2 solves the inverse kinematics to find the joint angles that produce it, and
+      how to command the arm to follow a straight-line path through Cartesian space. These tools
+      are essential for any task that requires precise tool placement: surface scanning, connector
+      insertion, and the pick-and-place capstone in Chapter&nbsp;10.
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §5.1  Pose Representation
+         ════════════════════════════════════════════════ -->
+    <section id="pose-representation">
+      <h2>5.1 Pose Representation in SE(3)</h2>
+
+      <p>
+        A <strong>pose</strong> is the combination of a position and an orientation. In robotics,
+        the set of all valid poses of a rigid body in 3D space is written \(SE(3)\) — the
+        <em>Special Euclidean group</em> of dimension three
+        <a class="cite" href="#ref1">[1]</a>.
+        Every element of \(SE(3)\) can be encoded as a \(4 \times 4\)
+        <strong>homogeneous transform matrix</strong>:
+      </p>
+
+      <div class="math-block">
+        \[
+          T = \begin{bmatrix} R & \mathbf{p} \\ \mathbf{0}^\top & 1 \end{bmatrix}
+          \quad R \in SO(3),\quad \mathbf{p} \in \mathbb{R}^3
+        \]
+      </div>
+
+      <p>
+        The \(3 \times 3\) block \(R\) encodes the orientation (rotation relative to some reference
+        frame); the \(3 \times 1\) column \(\mathbf{p} = [x,\, y,\, z]^\top\) encodes the position.
+        You already encountered this matrix in Chapter&nbsp;2 as the output of forward kinematics.
+        In Cartesian control you use the same matrix as an <em>input</em>: you specify where you
+        want the end-effector to be, and MoveIt&nbsp;2 finds the joint angles that put it there.
+      </p>
+
+      <!-- ── Figure 5.1: SE(3) Pose ── -->
+      <figure id="fig5-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 556 285" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="556" height="285" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="xw" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="yw" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+              <marker id="zw" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#2980b9"/>
+              </marker>
+              <marker id="pv" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#8e44ad"/>
+              </marker>
+            </defs>
+
+            <!-- ══ LEFT: 3D Frame Diagram ══ -->
+
+            <!-- World frame at (70, 235) -->
+            <line x1="70" y1="235" x2="118" y2="235" stroke="#c0392b" stroke-width="2" marker-end="url(#xw)"/>
+            <text x="123" y="239" fill="#c0392b" font-size="10" font-weight="600">X</text>
+            <line x1="70" y1="235" x2="70" y2="187" stroke="#27ae60" stroke-width="2" marker-end="url(#yw)"/>
+            <text x="65" y="183" text-anchor="end" fill="#27ae60" font-size="10" font-weight="600">Y</text>
+            <line x1="70" y1="235" x2="94" y2="214" stroke="#2980b9" stroke-width="2" marker-end="url(#zw)"/>
+            <text x="98" y="211" fill="#2980b9" font-size="10" font-weight="600">Z</text>
+            <circle cx="70" cy="235" r="4" fill="#333"/>
+            <text x="70" y="255" text-anchor="middle" fill="#555" font-size="9">World frame</text>
+            <text x="70" y="267" text-anchor="middle" fill="#555" font-size="9">panda_link0</text>
+
+            <!-- EEF frame at (195, 112) — rotated ~20 deg CCW in standard math -->
+            <!-- x_e: direction (cos20, -sin20 in SVG) = (0.940, -0.342); length 44 -->
+            <!-- endpoint: (195+41, 112-15) = (236, 97) -->
+            <line x1="195" y1="112" x2="236" y2="97" stroke="#c0392b" stroke-width="2" marker-end="url(#xw)"/>
+            <text x="241" y="95" fill="#c0392b" font-size="10" font-weight="600">x</text>
+            <!-- y_e: direction (-sin20, -cos20 in SVG) = (-0.342, -0.940); length 40 -->
+            <!-- endpoint: (195-14, 112-38) = (181, 74) -->
+            <line x1="195" y1="112" x2="181" y2="74" stroke="#27ae60" stroke-width="2" marker-end="url(#yw)"/>
+            <text x="177" y="70" fill="#27ae60" font-size="10" font-weight="600">y</text>
+            <circle cx="195" cy="112" r="5" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2"/>
+            <text x="208" y="128" fill="#e67e22" font-size="9" font-weight="600">EEF origin</text>
+
+            <!-- Position vector p from world origin (70,235) to EEF (195,112) -->
+            <line x1="72" y1="233" x2="191" y2="115" stroke="#8e44ad" stroke-width="1.8"
+                  stroke-dasharray="7,4" marker-end="url(#pv)"/>
+            <text x="112" y="185" fill="#8e44ad" font-size="14" font-style="italic">p</text>
+            <text x="95" y="199" fill="#8e44ad" font-size="9">position (x, y, z)</text>
+            <text x="98" y="211" fill="#8e44ad" font-size="9">in meters</text>
+
+            <!-- Rotation label -->
+            <text x="155" y="50" text-anchor="middle" fill="#555" font-size="9">R encodes rotation</text>
+            <text x="155" y="62" text-anchor="middle" fill="#555" font-size="9">(axes are tilted vs. world)</text>
+            <!-- Arc showing rotation angle between world X and EEF x -->
+            <path d="M 110 235 A 40 40 0 0 0 106 224" fill="none" stroke="#e67e22" stroke-width="1.3" stroke-dasharray="3,2"/>
+            <text x="116" y="223" fill="#e67e22" font-size="9">angle</text>
+
+            <!-- Vertical divider -->
+            <line x1="268" y1="10" x2="268" y2="275" stroke="#ddd" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <!-- ══ RIGHT: Matrix notation ══ -->
+            <text x="415" y="26" text-anchor="middle" fill="#333" font-weight="700" font-size="12">Homogeneous Transform T</text>
+
+            <!-- "T =" label -->
+            <text x="284" y="126" fill="#333" font-size="16" font-weight="700">T =</text>
+
+            <!-- Matrix outer box -->
+            <rect x="317" y="88" width="167" height="78" rx="2" fill="white" stroke="#bbb" stroke-width="1.5"/>
+            <!-- Vertical divider at x=413 -->
+            <line x1="413" y1="88" x2="413" y2="166" stroke="#bbb" stroke-width="1"/>
+            <!-- Horizontal divider at y=136 -->
+            <line x1="317" y1="136" x2="484" y2="136" stroke="#bbb" stroke-width="1"/>
+
+            <!-- R block -->
+            <text x="365" y="120" text-anchor="middle" fill="#0057b8" font-size="22" font-weight="700">R</text>
+            <text x="365" y="132" text-anchor="middle" fill="#0057b8" font-size="8">3 x 3 rotation</text>
+            <!-- p block -->
+            <text x="448" y="120" text-anchor="middle" fill="#c0392b" font-size="22" font-weight="700" font-style="italic">p</text>
+            <text x="448" y="132" text-anchor="middle" fill="#c0392b" font-size="8">3 x 1 position</text>
+            <!-- Bottom row -->
+            <text x="365" y="155" text-anchor="middle" fill="#aaa" font-size="10">0   0   0</text>
+            <text x="448" y="155" text-anchor="middle" fill="#aaa" font-size="10">1</text>
+
+            <!-- Annotations below matrix -->
+            <rect x="317" y="180" width="8" height="8" rx="1" fill="#0057b8"/>
+            <text x="330" y="188" fill="#0057b8" font-size="10">R — orientation (rotation matrix)</text>
+            <rect x="317" y="198" width="8" height="8" rx="1" fill="#c0392b"/>
+            <text x="330" y="206" fill="#c0392b" font-size="10">p — position in meters (x, y, z)</text>
+            <text x="317" y="226" fill="#555" font-size="9">Composing two transforms:</text>
+            <text x="317" y="239" fill="#555" font-size="9">T_A_to_C  =  T_A_to_B  x  T_B_to_C</text>
+            <text x="317" y="256" fill="#888" font-size="9">One matrix encodes the full pose of a frame.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 5.1.</strong> A pose in \(SE(3)\) has two components.
+          <em>Left:</em> the position vector \(\mathbf{p}\) (purple dashed arrow) points from the
+          world frame origin to the end-effector origin; the rotated red and green axes show that
+          the EEF frame is also tilted relative to the world frame, capturing orientation.
+          <em>Right:</em> both components are packed into a single \(4 \times 4\) homogeneous
+          transform \(T\). The rotation block \(R\) is a \(3 \times 3\) matrix whose columns are
+          the EEF frame's axes expressed in the world frame; the position block \(\mathbf{p}\) is
+          a \(3 \times 1\) column in meters. Composing transforms is matrix multiplication.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §5.2  Orientation in 3D
+         ════════════════════════════════════════════════ -->
+    <section id="orientation">
+      <h2>5.2 Representing Orientation</h2>
+
+      <p>
+        The rotation matrix \(R\) encodes orientation but is awkward to specify by hand —
+        you would need to fill in 9 numbers while satisfying 6 orthogonality constraints.
+        In practice, three more compact representations are used:
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Representation</th><th>Parameters</th><th>Pros</th><th>Cons / Gotchas</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Roll-Pitch-Yaw (RPY)</strong></td>
+            <td>3 angles: roll \(\phi\), pitch \(\theta\), yaw \(\psi\)</td>
+            <td>Human-readable; easy to reason about in tool frames</td>
+            <td>Gimbal lock at pitch = ±90°; axis order matters (XYZ ≠ ZYX)</td>
+          </tr>
+          <tr>
+            <td><strong>Quaternion</strong></td>
+            <td>4 numbers: \((q_x, q_y, q_z, q_w)\), unit constraint \(|\mathbf{q}|=1\)</td>
+            <td>No gimbal lock; smooth interpolation (SLERP); used internally by MoveIt&nbsp;2</td>
+            <td>Non-intuitive; double cover of \(SO(3)\) (\(\mathbf{q}\) and \(-\mathbf{q}\) same rotation)</td>
+          </tr>
+          <tr>
+            <td><strong>Axis-Angle</strong></td>
+            <td>Unit axis \(\hat{\mathbf{k}}\) and angle \(\theta\)</td>
+            <td>Geometrically intuitive; easy to construct a specific rotation</td>
+            <td>Singularity at \(\theta = 0\); not directly accepted by MoveIt&nbsp;2 API</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        MoveIt&nbsp;2's Python API accepts a <code>geometry_msgs/Pose</code> message, which stores
+        orientation as a quaternion <code>(x, y, z, w)</code>. The helper table below gives
+        quaternions for the most common orientations relative to the robot base frame, saving you
+        from computing them by hand.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Desired EEF orientation</th><th>Quaternion (x, y, z, w)</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Pointing straight down (gripper vertical)</td><td>(1.0, 0.0, 0.0, 0.0)</td><td>180° rotation about X; most common pick pose</td></tr>
+          <tr><td>Pointing straight up</td><td>(0.0, 0.0, 0.0, 1.0)</td><td>Identity rotation</td></tr>
+          <tr><td>Pointing forward (+X axis)</td><td>(0.707, 0.0, 0.707, 0.0)</td><td>90° about Y then 90° about X</td></tr>
+          <tr><td>Rotated 90° about Z from "down"</td><td>(0.707, 0.707, 0.0, 0.0)</td><td>Gripper rotated 90° in the horizontal plane</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-tip">
+        <strong>Converting RPY to quaternion in Python:</strong>
+        Use <code>transforms3d</code> or <code>scipy</code>:
+        <br><br>
+        <code>from scipy.spatial.transform import Rotation as R</code><br>
+        <code>q = R.from_euler('xyz', [roll, pitch, yaw]).as_quat()  # returns [x, y, z, w]</code>
+        <br><br>
+        <code>scipy</code> uses the convention <code>[x, y, z, w]</code> which matches
+        <code>geometry_msgs/Quaternion</code>. Always verify with a sanity-check print
+        before executing on hardware.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §5.3  Pose Goals in MoveIt 2
+         ════════════════════════════════════════════════ -->
+    <section id="pose-goals">
+      <h2>5.3 Pose Goals in MoveIt&nbsp;2</h2>
+
+      <p>
+        Setting a Cartesian pose goal instead of a joint goal requires one extra step internally:
+        MoveIt&nbsp;2 must run <strong>inverse kinematics (IK)</strong> to find joint angles
+        \(\mathbf{q}\) that place the end-effector at the desired pose. The planner then
+        plans a collision-free path through joint space to reach those angles, exactly as in
+        Chapter&nbsp;4. The pipeline is identical — only the way the goal is expressed changes.
+      </p>
+
+      <p>
+        The IK solver used by default for the Panda is <strong>TRAC-IK</strong>, a hybrid
+        analytical/numerical solver that runs in a few milliseconds. If no IK solution exists
+        (the target is outside the workspace or blocked by joint limits), MoveIt&nbsp;2 returns
+        a planning failure — your code receives <code>False</code> from the plan call and should
+        handle it gracefully.
+      </p>
+
+      <div class="callout callout-warning">
+        <strong>Multiple IK solutions.</strong> For most Cartesian targets the Panda has several
+        valid joint configurations (elbow-up, elbow-down, different wrist orientations). TRAC-IK
+        returns the solution closest to the current joint state. If you need a specific elbow
+        posture, add a joint-space constraint (Chapter&nbsp;8) or seed the IK solver explicitly.
+      </div>
+
+      <h3>5.3.1 Specifying a Pose Goal</h3>
+      <p>
+        The key API call is <code>arm.set_goal_state(pose_stamped_msg=…, pose_link=…)</code>.
+        The <code>pose_stamped_msg</code> is a <code>geometry_msgs/PoseStamped</code> containing
+        the target pose and the reference frame it is expressed in. The <code>pose_link</code>
+        is the name of the robot link that should reach that pose — typically
+        <code>'panda_hand'</code> (the EEF flange) or <code>'panda_EE'</code>
+        (the virtual tool-center-point offset).
+      </p>
+
+      <h3>5.3.2 Pose vs. Joint Goals — When to Use Each</h3>
+      <table>
+        <thead>
+          <tr><th>Use case</th><th>Preferred goal type</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Move to a home or ready position</td>
+            <td>Joint goal</td>
+            <td>Exact joint config known; no IK ambiguity</td>
+          </tr>
+          <tr>
+            <td>Place gripper above an object</td>
+            <td>Pose goal</td>
+            <td>You know where the object is, not which joint angles to use</td>
+          </tr>
+          <tr>
+            <td>Straight-line approach to a surface</td>
+            <td>Cartesian path (§5.4)</td>
+            <td>Path shape in space matters, not just end point</td>
+          </tr>
+          <tr>
+            <td>Scan a flat workpiece</td>
+            <td>Cartesian path</td>
+            <td>EEF must stay at fixed height; joint path would arc away</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §5.4  Straight-Line Cartesian Paths
+         ════════════════════════════════════════════════ -->
+    <section id="cartesian-paths">
+      <h2>5.4 Straight-Line Cartesian Paths</h2>
+
+      <p>
+        A standard pose goal asks MoveIt&nbsp;2 to reach a target <em>configuration</em> — it
+        doesn't constrain the shape of the path taken through space. The EEF traces whatever
+        arc the joint-interpolated trajectory naturally produces (Figure&nbsp;5.2, left).
+        When the <em>path shape</em> matters — inserting a connector, wiping a surface, or
+        approaching a pick point along a vertical axis — you need
+        <code>compute_cartesian_path()</code> instead (Figure&nbsp;5.2, right).
+      </p>
+
+      <!-- ── Figure 5.2: Cartesian Path vs Joint-Interpolated ── -->
+      <figure id="fig5-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 556 255" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="556" height="255" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="p2a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+              <marker id="wpa" markerWidth="5" markerHeight="5" refX="2" refY="2" orient="auto">
+                <path d="M0,0 L0,4 L4,2 z" fill="#27ae60"/>
+              </marker>
+            </defs>
+
+            <!-- ══ LEFT PANEL: Joint-interpolated ══ -->
+            <rect x="8" y="8" width="262" height="240" rx="5" fill="#fff8f0" stroke="#f8c471" stroke-width="1"/>
+            <text x="139" y="26" text-anchor="middle" fill="#e67e22" font-weight="700" font-size="12">Joint-Interpolated Path</text>
+            <text x="139" y="40" text-anchor="middle" fill="#888" font-size="9">set_goal_state(robot_state=…)</text>
+
+            <!-- Robot base (left panel) -->
+            <rect x="104" y="216" width="70" height="16" rx="3" fill="#bdc3cb" stroke="#8896aa" stroke-width="1.2"/>
+            <text x="139" y="228" text-anchor="middle" fill="#555" font-size="8">Base</text>
+
+            <!-- Arm in start config (EEF at ~85, 90) -->
+            <line x1="139" y1="216" x2="139" y2="175" stroke="#dde3ec" stroke-width="12" stroke-linecap="round"/>
+            <line x1="139" y1="175" x2="100" y2="135" stroke="#dde3ec" stroke-width="10" stroke-linecap="round"/>
+            <line x1="100" y1="135" x2="82"  y2="95"  stroke="#dde3ec" stroke-width="8"  stroke-linecap="round"/>
+            <circle cx="139" cy="175" r="8" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <circle cx="100" cy="135" r="7" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <circle cx="82"  cy="95"  r="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2"/>
+
+            <!-- Arm in end config (EEF at ~196, 95) -->
+            <line x1="139" y1="216" x2="139" y2="175" stroke="#dde3ec" stroke-width="12" stroke-linecap="round" opacity="0.45"/>
+            <line x1="139" y1="175" x2="175" y2="130" stroke="#dde3ec" stroke-width="10" stroke-linecap="round" opacity="0.45"/>
+            <line x1="175" y1="130" x2="196" y2="93"  stroke="#dde3ec" stroke-width="8"  stroke-linecap="round" opacity="0.45"/>
+            <circle cx="196" cy="93" r="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2" opacity="0.45"/>
+
+            <!-- Curved EEF path (joint-interpolated — arcs through space) -->
+            <path d="M 82 95 C 115 55 165 52 196 93"
+                  fill="none" stroke="#e67e22" stroke-width="2.5" stroke-dasharray="6,3"/>
+
+            <!-- Start/end markers -->
+            <circle cx="82"  cy="95" r="5" fill="#27ae60"/>
+            <text x="68" y="91" text-anchor="end" fill="#27ae60" font-size="9" font-weight="600">Start</text>
+            <circle cx="196" cy="93" r="5" fill="#c0392b"/>
+            <text x="202" y="89" fill="#c0392b" font-size="9" font-weight="600">End</text>
+
+            <!-- Label -->
+            <text x="139" y="198" text-anchor="middle" fill="#e67e22" font-size="9" font-weight="600">EEF traces a curved arc</text>
+            <text x="139" y="210" text-anchor="middle" fill="#888" font-size="9">Path shape is uncontrolled</text>
+
+            <!-- Divider -->
+            <line x1="278" y1="10" x2="278" y2="245" stroke="#ddd" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <!-- ══ RIGHT PANEL: Cartesian straight-line ══ -->
+            <rect x="286" y="8" width="262" height="240" rx="5" fill="#f0faf4" stroke="#a9dfbf" stroke-width="1"/>
+            <text x="417" y="26" text-anchor="middle" fill="#27ae60" font-weight="700" font-size="12">Cartesian Straight-Line Path</text>
+            <text x="417" y="40" text-anchor="middle" fill="#888" font-size="9">compute_cartesian_path(waypoints)</text>
+
+            <!-- Robot base (right panel) -->
+            <rect x="382" y="216" width="70" height="16" rx="3" fill="#bdc3cb" stroke="#8896aa" stroke-width="1.2"/>
+            <text x="417" y="228" text-anchor="middle" fill="#555" font-size="8">Base</text>
+
+            <!-- Arm in start config -->
+            <line x1="417" y1="216" x2="417" y2="175" stroke="#dde3ec" stroke-width="12" stroke-linecap="round"/>
+            <line x1="417" y1="175" x2="378" y2="135" stroke="#dde3ec" stroke-width="10" stroke-linecap="round"/>
+            <line x1="378" y1="135" x2="360" y2="95"  stroke="#dde3ec" stroke-width="8"  stroke-linecap="round"/>
+            <circle cx="417" cy="175" r="8" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <circle cx="378" cy="135" r="7" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <circle cx="360" cy="95"  r="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.2"/>
+
+            <!-- Straight EEF path with waypoints -->
+            <line x1="360" y1="95" x2="474" y2="95" stroke="#27ae60" stroke-width="2.5"/>
+            <!-- Waypoints along path -->
+            <circle cx="360" cy="95" r="5" fill="#27ae60"/>
+            <circle cx="389" cy="95" r="4" fill="#27ae60" opacity="0.7"/>
+            <circle cx="417" cy="95" r="4" fill="#27ae60" opacity="0.7"/>
+            <circle cx="446" cy="95" r="4" fill="#27ae60" opacity="0.7"/>
+            <circle cx="474" cy="95" r="5" fill="#c0392b"/>
+
+            <!-- Start/end labels -->
+            <text x="346" y="91" text-anchor="end" fill="#27ae60" font-size="9" font-weight="600">Start</text>
+            <text x="480" y="91" fill="#c0392b" font-size="9" font-weight="600">End</text>
+
+            <!-- Waypoint label -->
+            <text x="417" y="82" text-anchor="middle" fill="#27ae60" font-size="8">waypoints</text>
+            <line x1="417" y1="84" x2="417" y2="91" stroke="#27ae60" stroke-width="0.8"/>
+
+            <!-- Labels -->
+            <text x="417" y="198" text-anchor="middle" fill="#27ae60" font-size="9" font-weight="600">EEF follows a straight line</text>
+            <text x="417" y="210" text-anchor="middle" fill="#888" font-size="9">Path is precise in Cartesian space</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 5.2.</strong> The difference between a joint-interpolated path and a
+          Cartesian path.
+          <em>Left:</em> when you specify only a goal joint state or goal pose,
+          MoveIt&nbsp;2 interpolates in joint space — the end-effector traces an uncontrolled
+          arc through Cartesian space (orange dashed curve).
+          <em>Right:</em> <code>compute_cartesian_path()</code> constrains the EEF to move
+          in a straight line (green) through the list of waypoints — the joint angles are
+          computed at each interpolation step to maintain this Cartesian constraint.
+          Use the right approach whenever the path shape matters, not just the endpoint.
+        </figcaption>
+      </figure>
+
+      <h3>5.4.1 How compute_cartesian_path Works</h3>
+      <p>
+        <code>compute_cartesian_path()</code> interpolates the end-effector linearly between
+        consecutive waypoints in Cartesian space. At each interpolation step (controlled by the
+        <code>max_step</code> parameter, in meters) it calls the IK solver to find joint angles
+        that place the EEF at that interpolated position. The result is a joint trajectory
+        that, when executed, keeps the EEF on the straight line.
+      </p>
+
+      <p>
+        The function returns two values: the planned trajectory and a
+        <strong>fraction</strong> (0.0–1.0) indicating what percentage of the requested path
+        was successfully planned. A fraction below 1.0 means the arm ran out of reachable space
+        or hit a collision along the path. Always check the fraction before executing:
+      </p>
+
+      <div class="callout callout-warning">
+        <strong>Always check the fraction.</strong> If <code>fraction &lt; 0.95</code>, the arm will
+        stop mid-path. On real hardware this can leave the arm at an awkward intermediate pose.
+        Design waypoint sequences that stay within the workspace, and add a minimum-fraction
+        check before calling <code>execute()</code>.
+      </div>
+
+      <h3>5.4.2 Choosing max_step</h3>
+      <p>
+        The <code>max_step</code> parameter (default ~5&nbsp;mm) controls how finely the
+        Cartesian path is interpolated. Smaller values produce smoother motion but require more
+        IK calls and more waypoints in the trajectory. In practice:
+      </p>
+      <ul>
+        <li><strong>5&nbsp;mm (0.005)</strong> — good general default; smooth motion, fast planning</li>
+        <li><strong>1&nbsp;mm (0.001)</strong> — high-precision tasks (PCB probing, connector insertion)</li>
+        <li><strong>10&nbsp;mm (0.01)</strong> — fast rough scans where path smoothness is less critical</li>
+      </ul>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §5.5  Reference Frames
+         ════════════════════════════════════════════════ -->
+    <section id="frames">
+      <h2>5.5 Reference Frames</h2>
+
+      <p>
+        Every pose goal must be expressed <em>relative to a specific frame</em>. Specifying
+        a pose in the wrong frame is one of the most common bugs in Cartesian control — the
+        numbers look right but the robot moves to the wrong place. Figure&nbsp;5.3 shows the
+        three frames you will use most often.
+      </p>
+
+      <!-- ── Figure 5.3: Frame Chain ── -->
+      <figure id="fig5-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 520 148" width="486" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="520" height="148" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="fca" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Frame boxes -->
+            <!-- 1. world: x=10, w=72, center=46 -->
+            <rect x="10" y="42" width="72" height="42" rx="5" fill="#333" stroke="#222" stroke-width="1.2"/>
+            <text x="46" y="60" text-anchor="middle" fill="white" font-weight="700" font-size="11">world</text>
+            <text x="46" y="75" text-anchor="middle" fill="#aaa" font-size="9">sim origin</text>
+
+            <!-- Arrow 1: 82 to 110 -->
+            <line x1="82" y1="63" x2="108" y2="63" stroke="#555" stroke-width="1.5" marker-end="url(#fca)"/>
+            <text x="95" y="56" text-anchor="middle" fill="#888" font-size="8">static</text>
+
+            <!-- 2. panda_link0: x=110, w=118, center=169 -->
+            <rect x="110" y="42" width="118" height="42" rx="5" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <text x="169" y="60" text-anchor="middle" fill="white" font-weight="700" font-size="11">panda_link0</text>
+            <text x="169" y="74" text-anchor="middle" fill="#b8d4f5" font-size="9">robot base</text>
+
+            <!-- Arrow 2: 228 to 268, with dots -->
+            <line x1="228" y1="63" x2="265" y2="63" stroke="#555" stroke-width="1.5" marker-end="url(#fca)"/>
+            <text x="246" y="56" text-anchor="middle" fill="#888" font-size="8">7 joint</text>
+            <text x="246" y="78" text-anchor="middle" fill="#888" font-size="8">transforms</text>
+
+            <!-- 3. panda_hand: x=267, w=107, center=320 -->
+            <rect x="267" y="42" width="107" height="42" rx="5" fill="#27ae60" stroke="#1e8449" stroke-width="1.2"/>
+            <text x="320" y="60" text-anchor="middle" fill="white" font-weight="700" font-size="11">panda_hand</text>
+            <text x="320" y="74" text-anchor="middle" fill="#a9dfbf" font-size="9">EEF flange</text>
+
+            <!-- Arrow 3: 374 to 400 -->
+            <line x1="374" y1="63" x2="398" y2="63" stroke="#555" stroke-width="1.5" marker-end="url(#fca)"/>
+            <text x="386" y="56" text-anchor="middle" fill="#888" font-size="8">fixed</text>
+
+            <!-- 4. panda_EE: x=400, w=108, center=454 -->
+            <rect x="400" y="42" width="108" height="42" rx="5" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2"/>
+            <text x="454" y="60" text-anchor="middle" fill="white" font-weight="700" font-size="11">panda_EE</text>
+            <text x="454" y="74" text-anchor="middle" fill="#fdebd0" font-size="9">tool center pt.</text>
+
+            <!-- Labels below frames -->
+            <text x="46"  y="100" text-anchor="middle" fill="#555" font-size="9">Gazebo sim</text>
+            <text x="46"  y="112" text-anchor="middle" fill="#555" font-size="9">global origin</text>
+
+            <text x="169" y="100" text-anchor="middle" fill="#0057b8" font-size="9">Use for pose goals</text>
+            <text x="169" y="112" text-anchor="middle" fill="#0057b8" font-size="9">frame_id="panda_link0"</text>
+
+            <text x="320" y="100" text-anchor="middle" fill="#27ae60" font-size="9">Default goal link</text>
+            <text x="320" y="112" text-anchor="middle" fill="#27ae60" font-size="9">pose_link="panda_hand"</text>
+
+            <text x="454" y="100" text-anchor="middle" fill="#e67e22" font-size="9">TCP with tool offset</text>
+            <text x="454" y="112" text-anchor="middle" fill="#e67e22" font-size="9">107 mm from flange</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 5.3.</strong> The reference frame chain for the Panda in simulation.
+          <code>world</code> is the Gazebo global origin (fixed, static transform to
+          <code>panda_link0</code>).
+          <code>panda_link0</code> is the robot base — always use this as
+          <code>frame_id</code> when specifying Cartesian pose goals in Python code.
+          <code>panda_hand</code> is the physical end-effector flange — use as
+          <code>pose_link</code> to tell MoveIt&nbsp;2 which link should reach the target pose.
+          <code>panda_EE</code> is a virtual frame 107&nbsp;mm beyond the flange, useful when a
+          tool extends the effective tool center point.
+        </figcaption>
+      </figure>
+
+      <h3>5.5.1 Planning Frame vs. EEF Link</h3>
+      <p>
+        Two frame concepts are easy to confuse:
+      </p>
+      <dl>
+        <dt><strong>Planning frame</strong> (<code>frame_id</code> in the PoseStamped)</dt>
+        <dd>
+          The coordinate system your target \(x, y, z\) coordinates are measured in.
+          Almost always <code>'panda_link0'</code> (the robot base).
+          If you use <code>'world'</code> instead and the robot is not at the world origin,
+          your coordinates will be wrong.
+        </dd>
+        <dt><strong>EEF link</strong> (<code>pose_link</code> in the API call)</dt>
+        <dd>
+          The link on the robot that should arrive at the target pose.
+          Use <code>'panda_hand'</code> for the flange, or <code>'panda_EE'</code> if you
+          need to account for an attached tool's extra length.
+        </dd>
+      </dl>
+
+      <div class="callout callout-note">
+        <strong>On real hardware</strong> (Chapter&nbsp;9), the <code>world</code> frame
+        coincides with <code>panda_link0</code> if the robot is fixed — the static transform
+        between them is set to identity. This means the same Python code works in simulation
+        and on hardware as long as you use <code>'panda_link0'</code> as your reference frame.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §5.6  Code Examples
+         ════════════════════════════════════════════════ -->
+    <section id="code">
+      <h2>5.6 Code Examples</h2>
+
+      <h3>5.6.1 Move to a Cartesian Pose Goal</h3>
+      <p>
+        This script moves the EEF to a specified position and orientation in the
+        <code>panda_link0</code> frame. MoveIt&nbsp;2 solves IK internally, plans a
+        collision-free joint path, and executes it.
+      </p>
+
+      <div class="code-header">move_to_pose.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Move the Panda end-effector to a target Cartesian pose via MoveIt 2.
+IK is solved internally by TRAC-IK; the planner finds a collision-free
+joint path to the resulting configuration.
+
+Requires: simulation running (ch03 launch_sim.sh).
+"""
+
+import rclpy
+from rclpy.node import Node
+from moveit.planning import MoveItPy
+from geometry_msgs.msg import Pose, PoseStamped
+
+
+class PoseGoalClient(Node):
+    def __init__(self):
+        super().__init__('pose_goal_client')
+        self.moveit = MoveItPy(node_name='pose_goal_moveit')
+        self.arm = self.moveit.get_planning_component('panda_arm')
+        self.get_logger().info('MoveIt 2 initialized.')
+
+    def move_to_pose(
+        self,
+        x: float, y: float, z: float,
+        qx: float, qy: float, qz: float, qw: float,
+        vel_scale: float = 0.3,
+    ) -> bool:
+        """
+        Plan and execute a move to a Cartesian pose.
+
+        Args:
+            x, y, z:         EEF target position in panda_link0 frame (meters)
+            qx, qy, qz, qw:  EEF target orientation as a unit quaternion
+            vel_scale:        velocity scaling factor (0.0 – 1.0)
+
+        Returns:
+            True on success, False on planning or execution failure.
+        """
+        target = PoseStamped()
+        target.header.frame_id = 'panda_link0'
+        target.pose.position.x = x
+        target.pose.position.y = y
+        target.pose.position.z = z
+        target.pose.orientation.x = qx
+        target.pose.orientation.y = qy
+        target.pose.orientation.z = qz
+        target.pose.orientation.w = qw
+
+        self.arm.set_start_state_to_current_state()
+        self.arm.set_goal_state(
+            pose_stamped_msg=target,
+            pose_link='panda_hand',
+        )
+
+        plan = self.arm.plan(
+            single_plan_parameters={
+                'max_velocity_scaling_factor': vel_scale,
+                'max_acceleration_scaling_factor': vel_scale,
+            }
+        )
+        if not plan:
+            self.get_logger().error(
+                'Planning failed — target may be unreachable or in collision.'
+            )
+            return False
+
+        result = self.moveit.execute(plan.trajectory, controllers=[])
+        if not result:
+            self.get_logger().error('Execution failed.')
+            return False
+
+        self.get_logger().info('Pose goal reached.')
+        return True
+
+
+def main():
+    rclpy.init()
+    client = PoseGoalClient()
+
+    # Move to a position 40 cm in front of and 40 cm above the base,
+    # gripper pointing straight down (180-degree rotation about X).
+    success = client.move_to_pose(
+        x=0.4, y=0.0, z=0.4,
+        qx=1.0, qy=0.0, qz=0.0, qw=0.0,
+        vel_scale=0.3,
+    )
+    print('Success:', success)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>5.6.2 Straight-Line Cartesian Path</h3>
+      <p>
+        This script plans a straight-line sweep of the EEF along the X axis. Each entry in
+        <code>waypoints</code> is a <code>Pose</code> that the EEF passes through;
+        <code>compute_cartesian_path()</code> interpolates between them and returns the
+        planned fraction.
+      </p>
+
+      <div class="code-header">cartesian_path.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Plan and execute a straight-line Cartesian path through a list of waypoints.
+
+Uses compute_cartesian_path() which ensures the EEF moves in a straight line
+in Cartesian space — not just in joint space. Always check the returned fraction
+before executing; a fraction below 1.0 means part of the path was unreachable.
+
+Use cases:
+  - Wiping or scanning a flat surface
+  - Straight approach to a pick/place point
+  - Drawing a line or rectangle in space
+"""
+
+import rclpy
+from rclpy.node import Node
+from moveit.planning import MoveItPy
+from geometry_msgs.msg import Pose
+
+MIN_FRACTION = 0.95   # Abort if less than 95% of path was planned
+
+
+class CartesianPathClient(Node):
+    def __init__(self):
+        super().__init__('cartesian_path_client')
+        self.moveit = MoveItPy(node_name='cartesian_path_moveit')
+        self.arm = self.moveit.get_planning_component('panda_arm')
+
+    @staticmethod
+    def make_pose(x, y, z, qx=1.0, qy=0.0, qz=0.0, qw=0.0) -> Pose:
+        """Build a Pose message from position and quaternion."""
+        p = Pose()
+        p.position.x = x
+        p.position.y = y
+        p.position.z = z
+        p.orientation.x = qx
+        p.orientation.y = qy
+        p.orientation.z = qz
+        p.orientation.w = qw
+        return p
+
+    def run_cartesian_path(
+        self,
+        waypoints: list[Pose],
+        max_step: float = 0.005,
+        vel_scale: float = 0.2,
+    ) -> bool:
+        """
+        Plan and execute a Cartesian path through the given waypoints.
+
+        Args:
+            waypoints:    EEF poses in panda_link0 frame; path is interpolated between them
+            max_step:     maximum Cartesian interpolation distance in meters (default 5 mm)
+            vel_scale:    velocity scaling factor applied to the resulting trajectory
+
+        Returns:
+            True on success.
+        """
+        self.arm.set_start_state_to_current_state()
+
+        plan, fraction = self.arm.compute_cartesian_path(
+            waypoints=waypoints,
+            max_step=max_step,
+            jump_threshold=0.0,    # 0 disables joint-space jump detection
+        )
+
+        self.get_logger().info(f'Cartesian path fraction: {fraction * 100:.1f}%')
+
+        if fraction < MIN_FRACTION:
+            self.get_logger().error(
+                f'Only {fraction * 100:.0f}% of path reachable — aborting.'
+            )
+            return False
+
+        result = self.moveit.execute(plan.trajectory, controllers=[])
+        return bool(result)
+
+
+def main():
+    rclpy.init()
+    client = CartesianPathClient()
+
+    # Sweep the EEF 20 cm along the X axis at fixed height and Y position.
+    # All poses: gripper pointing down (qx=1, qw=0).
+    waypoints = [
+        client.make_pose(x=0.30, y=0.0, z=0.40),
+        client.make_pose(x=0.35, y=0.0, z=0.40),
+        client.make_pose(x=0.40, y=0.0, z=0.40),
+        client.make_pose(x=0.45, y=0.0, z=0.40),
+        client.make_pose(x=0.50, y=0.0, z=0.40),
+    ]
+
+    success = client.run_cartesian_path(waypoints, max_step=0.005, vel_scale=0.2)
+    print('Success:', success)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <div class="callout callout-tip">
+        <strong>Combining pose goals and Cartesian paths:</strong>
+        A common pattern is to use a joint goal (Chapter&nbsp;4) or pose goal to position
+        the arm in a general area, then switch to a Cartesian path for the final
+        precision approach. This avoids planning failures that occur when
+        <code>compute_cartesian_path()</code> is called from a poor starting configuration.
+      </div>
+    </section>
+
+    <!-- Exercises -->
+    <section id="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Run <code>move_to_pose.py</code> with the target pose <code>x=0.3, y=0.3, z=0.5</code>.
+          Does it succeed? Try <code>y=0.7</code>. At what Y value does planning start to fail?
+          Relate your answer to the workspace envelope in Figure&nbsp;2.4.
+        </li>
+        <li>
+          Modify <code>cartesian_path.py</code> to draw a square: four waypoints forming a
+          20&nbsp;cm × 20&nbsp;cm square in the XY plane at Z = 0.4&nbsp;m. Add a fifth
+          waypoint that returns to the start. What fraction do you achieve?
+        </li>
+        <li>
+          Change the orientation in <code>move_to_pose.py</code> from pointing-down
+          <code>(1,0,0,0)</code> to pointing-forward. Use the table in §5.2 to find
+          the correct quaternion. Verify in RViz that the gripper is tilted correctly.
+        </li>
+        <li>
+          In <code>cartesian_path.py</code>, increase <code>max_step</code> from 0.005 to 0.05.
+          How does the trajectory look in RViz? Now decrease it to 0.001. How does planning
+          time change? Use <code>time.time()</code> to measure it.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 5</h3>
+      <dl>
+        <dt>SE(3)</dt><dd>The Special Euclidean group — the mathematical set of all 3D poses (position + orientation).</dd>
+        <dt>Pose</dt><dd>A position (x, y, z in meters) combined with an orientation (rotation); fully describes where a frame is in space.</dd>
+        <dt>Quaternion</dt><dd>A 4-number representation of orientation (x, y, z, w) with no gimbal lock; used internally by MoveIt&nbsp;2.</dd>
+        <dt>Roll-Pitch-Yaw (RPY)</dt><dd>Three Euler angles describing successive rotations; intuitive but order-dependent and susceptible to gimbal lock.</dd>
+        <dt>Pose goal</dt><dd>A Cartesian target pose for the EEF; MoveIt&nbsp;2 solves IK to find the required joint angles.</dd>
+        <dt>compute_cartesian_path</dt><dd>MoveIt&nbsp;2 API that interpolates the EEF in straight lines between waypoints and returns a trajectory fraction.</dd>
+        <dt>Path fraction</dt><dd>The portion (0–1) of a requested Cartesian path that was successfully planned; values below 1 indicate unreachable segments.</dd>
+        <dt>panda_link0</dt><dd>The robot base frame; use as the reference for all Cartesian pose coordinates in Python code.</dd>
+        <dt>panda_hand</dt><dd>The EEF flange link; use as pose_link when specifying which link should reach the target pose.</dd>
+        <dt>panda_EE</dt><dd>A virtual tool-center-point frame 107&nbsp;mm beyond the flange; useful when a tool extends the physical reach.</dd>
+        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver in MoveIt&nbsp;2; returns the IK solution closest to the current joint state.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          R. M. Murray, Z. Li, and S. S. Sastry, <em>A Mathematical Introduction to Robotic
+          Manipulation</em>. Boca Raton, FL: CRC Press, 1994. Available free online at
+          <a href="https://www.cds.caltech.edu/~murray/mlswiki/">cds.caltech.edu/~murray/mlswiki/</a>
+        </li>
+        <li id="ref2">
+          B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo,
+          <em>Robotics: Modelling, Planning and Control</em>. London: Springer, 2009, ch. 2–3.
+        </li>
+        <li id="ref3">
+          P. Beeson and B. Ames, "TRAC-IK: An Open-Source Library for Improved Solving of
+          Generic Inverse Kinematics," in <em>Proc. IEEE-RAS 15th Int. Conf. Humanoid Robots</em>,
+          Seoul, South Korea, Nov. 2015, pp. 928–935.
+        </li>
+        <li id="ref4">
+          D. Coleman, I. Sucan, S. Chitta, and N. Correll, "Reducing the Barrier to Entry of
+          Complex Robotic Software: a MoveIt! Case Study," <em>Journal of Software Engineering
+          for Robotics</em>, vol. 5, no. 1, pp. 3–16, 2014.
+        </li>
+        <li id="ref5">
+          J. Stuber, C. Zell, and S. Haddadin, "Towards a Unified Cartesian Impedance Controller
+          for Robotic Systems," in <em>Proc. IEEE/RSJ IROS</em>, 2020.
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch04.html">&larr; Chapter 4: Joint Control</a>
+    <span class="page-info">Chapter 5 of 10</span>
+    <a href="ch06.html">Chapter 6: Velocity Control &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

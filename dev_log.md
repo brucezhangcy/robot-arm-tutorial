@@ -168,11 +168,43 @@ Added `D · Robot Arm Hardware Specs` link to the Appendices nav in `index.html`
 
 ---
 
+## 2026-05-16 — Chapter 5: Position Control — Cartesian Space
+
+### New File — ch05.html
+
+Full chapter (same layout as ch01–ch04), 8 logical sections.
+
+#### Sections & Content
+
+| Section | Content |
+|---|---|
+| §5.1 Pose Representation in SE(3) | Homogeneous transform T = [R \| p; 0 0 0 1]; explains rotation matrix R and position vector p; Figure 5.1 SVG showing world frame + rotated EEF frame + purple dashed position vector + right-half matrix notation panel |
+| §5.2 Orientation Representations | RPY vs Quaternion vs Axis-Angle comparison table; common quaternion lookup table (identity, pointing-down, rotated 90° about Z); scipy conversion tip `R.from_euler('xyz', [roll,pitch,yaw]).as_quat()` |
+| §5.3 Pose Goals in MoveIt 2 | IK overview; TRAC-IK hybrid analytical/numerical solver; pose-goal vs joint-goal decision table; PoseStamped workflow |
+| §5.4 Straight-Line Cartesian Paths | `compute_cartesian_path()` explanation; fraction concept; max_step guidance (5 mm default, 1 mm high-precision, 10 mm rough scan); Figure 5.2 SVG comparing curved joint-interpolated arc (orange dashed) vs straight-line Cartesian path with 5 green waypoints |
+| §5.5 Reference Frames | Planning frame vs EEF link distinction; Figure 5.3 SVG horizontal chain: world → panda_link0 → panda_hand → panda_EE with labeled arrows |
+| §5.6 Code Examples | `move_to_pose.py` (single-pose IK goal via MoveIt 2 Python API) and `cartesian_path.py` (5-waypoint straight-line sweep, MIN_FRACTION = 0.95 guard) |
+| Exercises | 4 exercises: modify quaternion to point EEF sideways, add pick/place waypoints, measure path deviation, tune max_step |
+| Key Terms / References | 12 key terms; 5 IEEE references (Lozano-Pérez 1981, Chirikjian 2011, Quigley 2015, Beeson & Ames 2015, Franka Emika 2023) |
+
+#### Figures
+
+| Figure | Description |
+|---|---|
+| Figure 5.1 (viewBox 556×285) | Left panel: world frame XYZ at (70,235), EEF frame with tilted axes at (195,112), purple dashed position vector p. Right panel: matrix block diagram with blue R (3×3) and red p (3×1) |
+| Figure 5.2 (viewBox 556×255) | Left panel: curved orange dashed Bézier arc (joint-interpolated). Right panel: straight-line path with 5 green waypoints at evenly spaced X positions |
+| Figure 5.3 (viewBox 520×148) | Horizontal chain: world (dark) → panda_link0 (blue) → panda_hand (green) → panda_EE (orange), with labeled transforms |
+
+#### Sidebar
+Includes Appendix D link; ch04.html footer already linked to ch05.html.
+
+---
+
 ## Planned Work
 
 | File | Topic | Key Diagrams |
 |---|---|---|
-| `ch05.html` | Position Control — Cartesian | SE(3) pose, compute_cartesian_path, frame chain |
+| ~~`ch05.html`~~ | ~~Position Control — Cartesian~~ | ✓ Complete (2026-05-16) |
 | `ch06.html` | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
 | `ch07.html` | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
 | `ch08.html` | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |
