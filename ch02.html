@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2 · Kinematics &amp; Coordinate Frames — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html" class="active">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#frames">2.1 Coordinate Frames</a></li>
+          <li><a href="#dh">2.2 DH Parameters</a></li>
+          <li><a href="#fk">2.3 Forward Kinematics</a></li>
+          <li><a href="#ik">2.4 Inverse Kinematics</a></li>
+          <li><a href="#jacobian">2.5 The Jacobian</a></li>
+          <li><a href="#workspace">2.6 Workspace &amp; Singularities</a></li>
+          <li><a href="#code">2.7 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 2</span>
+    <h1>Kinematics &amp; Coordinate Frames</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      Kinematics is the study of motion without regard to forces. This chapter answers the two
+      fundamental questions every robot arm programmer must understand: <em>given a set of joint
+      angles, where is the end-effector?</em> (forward kinematics) and <em>given a desired
+      end-effector pose, what joint angles are needed?</em> (inverse kinematics). We develop the
+      mathematical machinery — coordinate frames, homogeneous transforms, Denavit-Hartenberg
+      parameters, and the Jacobian — and show how to compute them for the Panda in Python.
+    </div>
+
+    <!-- ════════════════════════════════════
+         §2.1  Coordinate Frames
+         ════════════════════════════════════ -->
+    <section id="frames">
+      <h2>2.1 Coordinate Frames</h2>
+
+      <p>
+        A <strong>coordinate frame</strong> (also called a reference frame) is a set of three
+        mutually perpendicular axes — \(x\), \(y\), \(z\) — attached to a physical point in space.
+        Every measurement (a position, a velocity, a force) is only meaningful <em>relative to some
+        frame</em>. When you say "the end-effector is 0.5&nbsp;m in front of the robot," the word
+        "in front" implicitly refers to the robot's base frame.
+      </p>
+
+      <p>
+        For a robot arm, we attach a coordinate frame to each link. The pose (position + orientation)
+        of frame \(i\) relative to frame \(i-1\) depends on joint angle \(q_i\). Composing all
+        these relative transforms gives the pose of the end-effector in the world frame — this is
+        precisely what forward kinematics computes.
+      </p>
+
+      <h3>2.1.1 Homogeneous Transforms</h3>
+      <p>
+        A <strong>homogeneous transform</strong> \(T \in \mathbb{R}^{4 \times 4}\) encodes both a
+        rotation and a translation in a single matrix:
+      </p>
+
+      <div class="math-block">
+        \[
+          T = \begin{bmatrix} R & \mathbf{p} \\ \mathbf{0}^\top & 1 \end{bmatrix}
+          \quad
+          R \in SO(3),\quad \mathbf{p} \in \mathbb{R}^3
+        \]
+      </div>
+
+      <p>
+        where \(R\) is a \(3\times3\) rotation matrix and \(\mathbf{p}\) is a translation vector.
+        The advantage of this representation is that composing two transforms is simply matrix
+        multiplication:
+      </p>
+
+      <div class="math-block">
+        \[
+          T_{0 \to 2} = T_{0 \to 1} \cdot T_{1 \to 2}
+        \]
+      </div>
+
+      <p>
+        For the 7-DOF Panda, computing the end-effector pose in the base frame is:
+      </p>
+
+      <div class="math-block">
+        \[
+          T_{\text{EEF}} = T_1(q_1)\, T_2(q_2)\, T_3(q_3)\, T_4(q_4)\, T_5(q_5)\, T_6(q_6)\, T_7(q_7)
+        \]
+      </div>
+
+      <p>
+        Each \(T_i(q_i)\) is a \(4\times4\) matrix that depends on one joint angle.
+        The <strong>Denavit-Hartenberg (DH) convention</strong> gives us a systematic way to
+        construct each \(T_i\).
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.2  DH Parameters
+         ════════════════════════════════════ -->
+    <section id="dh">
+      <h2>2.2 Denavit-Hartenberg Parameters</h2>
+
+      <p>
+        The <strong>Denavit-Hartenberg (DH) convention</strong>
+        <a class="cite" href="#ref1">[1]</a> is a standardized procedure for assigning coordinate
+        frames to robot links. It represents the transform between consecutive frames using just
+        <strong>four parameters per joint</strong>:
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Symbol</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Link length</td><td>\(a_i\)</td><td>Distance along \(x_i\) from \(z_{i-1}\) to \(z_i\)</td></tr>
+          <tr><td>Link twist</td><td>\(\alpha_i\)</td><td>Angle from \(z_{i-1}\) to \(z_i\) about \(x_i\)</td></tr>
+          <tr><td>Link offset</td><td>\(d_i\)</td><td>Distance along \(z_{i-1}\) from \(x_{i-1}\) to \(x_i\)</td></tr>
+          <tr><td>Joint angle</td><td>\(\theta_i\)</td><td>Angle from \(x_{i-1}\) to \(x_i\) about \(z_{i-1}\) — <strong>this is the variable</strong> \(q_i\)</td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        For a revolute joint, \(a_i\), \(\alpha_i\), and \(d_i\) are fixed constants of the
+        mechanism's geometry; only \(\theta_i = q_i\) changes as the joint moves.
+        Figure&nbsp;2.1 illustrates the four steps for a single joint.
+      </p>
+
+      <!-- ── Figure 2.1: DH Convention ── -->
+      <figure id="fig2-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 680 280" width="640" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="680" height="280" fill="#fafbfc" rx="4"/>
+
+            <!-- ── STEP 1: Rotate z_{i-1} by theta ── -->
+            <g transform="translate(20,20)">
+              <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
+              <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 1</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate z_{i-1} by θ_i</text>
+
+              <!-- frame i-1 -->
+              <line x1="72" y1="140" x2="72" y2="60" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
+              <text x="76" y="58" fill="#c0392b" font-size="10">z_{i-1}</text>
+              <line x1="72" y1="140" x2="140" y2="140" stroke="#2ecc71" stroke-width="2" marker-end="url(#ga)"/>
+              <!-- label below the arrow so it stays inside the panel -->
+              <text x="92" y="153" fill="#2ecc71" font-size="10">x_{i-1}</text>
+              <circle cx="72" cy="140" r="3" fill="#333"/>
+
+              <!-- rotated x axis by theta ~30 deg (endpoint at cos30°*65=56, sin30°*65=32) -->
+              <line x1="72" y1="140" x2="128" y2="108" stroke="#27ae60" stroke-width="2" marker-end="url(#ga)"/>
+              <text x="116" y="102" fill="#27ae60" font-size="10">x′</text>
+
+              <!-- θ arc: absolute coords, centered at (72,140), radius 42 -->
+              <!-- start (east): (72+42, 140) = (114, 140)                              -->
+              <!-- end  (30° above east, SVG): (72+42·cos30°, 140−42·sin30°)            -->
+              <!--      = (72+36.4, 140−21) = (108.4, 119) ≈ (108, 119)                -->
+              <!-- sweep=0 (CCW in SVG) = short upward arc from x_{i-1} to x′  ✓       -->
+              <path d="M 114 140 A 42 42 0 0 0 108 119" fill="none" stroke="#e67e22" stroke-width="1.8"/>
+              <text x="118" y="132" fill="#e67e22" font-size="11" font-weight="600">θ_i</text>
+
+              <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Rotate x_{i-1} about</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z_{i-1} by angle θ_i</text>
+            </g>
+
+            <!-- ── STEP 2: Translate along z by d ── -->
+            <g transform="translate(178,20)">
+              <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
+              <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 2</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate z_{i-1} by d_i</text>
+
+              <line x1="72" y1="200" x2="72" y2="70" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
+              <text x="76" y="68" fill="#c0392b" font-size="10">z</text>
+
+              <!-- origin at bottom -->
+              <circle cx="72" cy="200" r="3" fill="#333"/>
+              <text x="82" y="204" fill="#555" font-size="10">O_{i-1}</text>
+
+              <!-- new origin after d translation -->
+              <circle cx="72" cy="130" r="3" fill="#0057b8"/>
+              <text x="82" y="128" fill="#0057b8" font-size="10">O' (after d_i)</text>
+
+              <!-- d annotation -->
+              <line x1="55" y1="200" x2="55" y2="130" stroke="#e67e22" stroke-width="1.5" marker-end="url(#oa)" marker-start="url(#oa2)"/>
+              <text x="25" y="168" fill="#e67e22" font-size="11" font-weight="600">d_i</text>
+
+              <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Move origin along</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z_{i-1} by distance d_i</text>
+            </g>
+
+            <!-- ── STEP 3: Translate along x by a ── -->
+            <g transform="translate(336,20)">
+              <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
+              <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 3</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate x' by a_i</text>
+
+              <!-- x axis -->
+              <line x1="20" y1="140" x2="130" y2="140" stroke="#27ae60" stroke-width="2" marker-end="url(#ga)"/>
+              <text x="128" y="135" fill="#27ae60" font-size="10">x'</text>
+              <circle cx="20" cy="140" r="3" fill="#333"/>
+
+              <!-- new origin after a translation -->
+              <circle cx="95" cy="140" r="3" fill="#0057b8"/>
+
+              <!-- a annotation -->
+              <line x1="20" y1="155" x2="95" y2="155" stroke="#e67e22" stroke-width="1.5" marker-end="url(#oa)" marker-start="url(#oa2)"/>
+              <text x="50" y="172" fill="#e67e22" font-size="11" font-weight="600">a_i</text>
+
+              <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Move origin along</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">x' by distance a_i</text>
+            </g>
+
+            <!-- ── STEP 4: Rotate x by alpha ── -->
+            <g transform="translate(494,20)">
+              <rect x="0" y="0" width="162" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
+              <text x="81" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 4</text>
+              <text x="81" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate x' by α_i → frame i</text>
+
+              <!-- x axis stays -->
+              <line x1="20" y1="150" x2="110" y2="150" stroke="#27ae60" stroke-width="2" marker-end="url(#ga)"/>
+              <text x="108" y="145" fill="#27ae60" font-size="10">x_i</text>
+
+              <!-- old z (vertical) -->
+              <line x1="65" y1="150" x2="65" y2="70" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4,3"/>
+              <text x="56" y="68" fill="#c0392b" font-size="10">z old</text>
+
+              <!-- new z rotated by alpha ~35 deg from vertical -->
+              <line x1="65" y1="150" x2="106" y2="75" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
+              <text x="107" y="72" fill="#c0392b" font-size="10">z_i</text>
+
+              <!-- α arc: properly centered at joint origin (65,150), radius 50          -->
+              <!-- start: z_old direction (straight up) → (65, 150−50) = (65, 100)       -->
+              <!-- end:   z_i  direction (same as line to (106,75)) scaled to r=50        -->
+              <!--        unit vec = (41,−75)/85.5 ≈ (0.480,−0.877)                      -->
+              <!--        end = (65+50·0.480, 150+50·(−0.877)) = (89.0, 106.2) ≈ (89,106)-->
+              <!-- sweep=1 (CW in SVG): short ~29° arc from pointing-up to up-right ✓    -->
+              <path d="M 65 100 A 50 50 0 0 1 89 106" fill="none" stroke="#8e44ad" stroke-width="1.8"/>
+              <text x="76" y="93" fill="#8e44ad" font-size="11" font-weight="600">α_i</text>
+
+              <text x="81" y="225" text-anchor="middle" fill="#555" font-size="10">Rotate z about x' by</text>
+              <text x="81" y="237" text-anchor="middle" fill="#555" font-size="10">α_i → final frame i</text>
+            </g>
+
+            <!-- arrowhead defs -->
+            <defs>
+              <marker id="ra" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="ga" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+              <marker id="oa" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#e67e22"/>
+              </marker>
+              <marker id="oa2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+                <path d="M0,0 L0,6 L6,3 z" fill="#e67e22"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 2.1.</strong> The four steps of the Denavit-Hartenberg convention for
+          constructing the transform between consecutive frames. Step&nbsp;1 rotates about
+          \(z_{i-1}\) by \(\theta_i\) (the joint variable). Step&nbsp;2 translates along
+          \(z_{i-1}\) by \(d_i\). Step&nbsp;3 translates along the new \(x'\) by \(a_i\).
+          Step&nbsp;4 rotates about \(x'\) by \(\alpha_i\) to produce frame \(i\).
+        </figcaption>
+      </figure>
+
+      <p>
+        The resulting \(4\times4\) DH transform matrix for joint \(i\) is:
+      </p>
+
+      <div class="math-block">
+        \[
+          T_i(\theta_i) =
+          \begin{bmatrix}
+            \cos\theta_i & -\sin\theta_i\cos\alpha_i &  \sin\theta_i\sin\alpha_i & a_i\cos\theta_i \\
+            \sin\theta_i &  \cos\theta_i\cos\alpha_i & -\cos\theta_i\sin\alpha_i & a_i\sin\theta_i \\
+            0            &  \sin\alpha_i             &  \cos\alpha_i             & d_i             \\
+            0            &  0                        &  0                        & 1
+          \end{bmatrix}
+        \]
+      </div>
+
+      <h3>2.2.1 Panda DH Parameters</h3>
+      <p>
+        Table&nbsp;2.1 lists the DH parameters for all seven Panda joints, taken from the official
+        Franka documentation <a class="cite" href="#ref2">[2]</a>. A full table with joint limits is
+        in <a href="appendix.html#dh-table">Appendix&nbsp;B</a>.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Joint \(i\)</th><th>\(a_i\) (m)</th><th>\(d_i\) (m)</th><th>\(\alpha_i\) (rad)</th><th>\(\theta_i\) (variable)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>0</td><td>0.333</td><td>0</td><td>\(q_1\)</td></tr>
+          <tr><td>2</td><td>0</td><td>0</td><td>\(-\pi/2\)</td><td>\(q_2\)</td></tr>
+          <tr><td>3</td><td>0</td><td>0.316</td><td>\(\pi/2\)</td><td>\(q_3\)</td></tr>
+          <tr><td>4</td><td>0.0825</td><td>0</td><td>\(\pi/2\)</td><td>\(q_4\)</td></tr>
+          <tr><td>5</td><td>\(-0.0825\)</td><td>0.384</td><td>\(-\pi/2\)</td><td>\(q_5\)</td></tr>
+          <tr><td>6</td><td>0</td><td>0</td><td>\(\pi/2\)</td><td>\(q_6\)</td></tr>
+          <tr><td>7</td><td>0.088</td><td>0</td><td>\(\pi/2\)</td><td>\(q_7\)</td></tr>
+          <tr><td>EEF</td><td>0</td><td>0.107</td><td>0</td><td>0 (fixed)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.3  Forward Kinematics
+         ════════════════════════════════════ -->
+    <section id="fk">
+      <h2>2.3 Forward Kinematics</h2>
+
+      <p>
+        <strong>Forward kinematics</strong> (FK) is the function
+        \(f: \mathbb{R}^7 \to SE(3)\) that maps a vector of joint angles
+        \(\mathbf{q} = [q_1, \ldots, q_7]^\top\) to the end-effector pose
+        \(T_{\text{EEF}} \in SE(3)\).
+        It is always unique — one joint configuration produces exactly one end-effector pose.
+      </p>
+
+      <div class="math-block">
+        \[
+          T_{\text{EEF}}(\mathbf{q}) =
+            T_1(q_1)\, T_2(q_2)\, T_3(q_3)\, T_4(q_4)\,
+            T_5(q_5)\, T_6(q_6)\, T_7(q_7)\, T_{\text{EEF}}
+        \]
+      </div>
+
+      <p>
+        The result \(T_{\text{EEF}}\) is a \(4\times4\) matrix whose top-left \(3\times3\) block
+        is the end-effector orientation and whose top-right \(3\times1\) column is its position
+        in the robot's base frame.
+      </p>
+
+      <!-- ── Figure 2.2: Kinematic Chain ── -->
+      <figure id="fig2-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 660 460" width="620" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="660" height="460" fill="#fafbfc" rx="4"/>
+
+            <!-- BASE -->
+            <rect x="270" y="415" width="120" height="22" rx="3" fill="#bdc3cb" stroke="#8896aa" stroke-width="1.2"/>
+            <text x="330" y="430" text-anchor="middle" font-size="10" fill="#555">Base (frame 0)</text>
+
+            <!-- ── Arm links drawn as thicker lines with joint circles ── -->
+            <!-- Link 0→1: vertical from base -->
+            <line x1="330" y1="415" x2="330" y2="360" stroke="#c8d0dc" stroke-width="18" stroke-linecap="round"/>
+            <!-- Link 1→2: slight left -->
+            <line x1="330" y1="360" x2="290" y2="295" stroke="#c8d0dc" stroke-width="16" stroke-linecap="round"/>
+            <!-- Link 2→3 -->
+            <line x1="290" y1="295" x2="330" y2="230" stroke="#c8d0dc" stroke-width="15" stroke-linecap="round"/>
+            <!-- Link 3→4 -->
+            <line x1="330" y1="230" x2="370" y2="170" stroke="#c8d0dc" stroke-width="13" stroke-linecap="round"/>
+            <!-- Link 4→5 -->
+            <line x1="370" y1="170" x2="350" y2="115" stroke="#c8d0dc" stroke-width="11" stroke-linecap="round"/>
+            <!-- Link 5→6 -->
+            <line x1="350" y1="115" x2="380" y2="75" stroke="#c8d0dc" stroke-width="10" stroke-linecap="round"/>
+            <!-- Link 6→7 (wrist) -->
+            <line x1="380" y1="75" x2="395" y2="45" stroke="#c8d0dc" stroke-width="8" stroke-linecap="round"/>
+
+            <!-- ── Joint circles ── -->
+            <!-- J1 -->
+            <circle cx="330" cy="360" r="16" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="330" cy="360" text-anchor="middle" fill="white" font-weight="700" font-size="11" dy="4">J1</text>
+            <!-- J2 -->
+            <circle cx="290" cy="295" r="15" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="290" cy="295" text-anchor="middle" fill="white" font-weight="700" font-size="11" dy="4">J2</text>
+            <!-- J3 -->
+            <circle cx="330" cy="230" r="14" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="330" cy="230" text-anchor="middle" fill="white" font-weight="700" font-size="11" dy="4">J3</text>
+            <!-- J4 -->
+            <circle cx="370" cy="170" r="13" fill="#2980b9" stroke="#1a6491" stroke-width="2"/>
+            <text x="370" cy="170" text-anchor="middle" fill="white" font-weight="700" font-size="11" dy="4">J4</text>
+            <!-- J5 -->
+            <circle cx="350" cy="115" r="12" fill="#2980b9" stroke="#1a6491" stroke-width="2"/>
+            <text x="350" cy="115" text-anchor="middle" fill="white" font-weight="700" font-size="11" dy="4">J5</text>
+            <!-- J6 -->
+            <circle cx="380" cy="75" r="11" fill="#3498db" stroke="#2471a3" stroke-width="2"/>
+            <text x="380" cy="75" text-anchor="middle" fill="white" font-weight="700" font-size="10" dy="4">J6</text>
+            <!-- J7 -->
+            <circle cx="395" cy="45" r="10" fill="#3498db" stroke="#2471a3" stroke-width="2"/>
+            <text x="395" cy="45" text-anchor="middle" fill="white" font-weight="700" font-size="10" dy="4">J7</text>
+
+            <!-- EEF -->
+            <rect x="382" y="22" width="26" height="18" rx="3" fill="#f39c12" stroke="#d68910" stroke-width="1.5"/>
+            <text x="395" y="34" text-anchor="middle" fill="white" font-weight="700" font-size="9">EEF</text>
+
+            <!-- ══ Coordinate frames on each joint ══ -->
+            <!-- Frame 1 at J1 (330, 360) -->
+            <line x1="330" y1="360" x2="330" y2="330" stroke="#c0392b" stroke-width="1.8" marker-end="url(#fz)"/>
+            <line x1="330" y1="360" x2="358" y2="360" stroke="#27ae60" stroke-width="1.8" marker-end="url(#fx)"/>
+            <text x="335" y="326" fill="#c0392b" font-size="9">z₁</text>
+            <text x="360" y="355" fill="#27ae60" font-size="9">x₁</text>
+
+            <!-- Frame 2 at J2 (290, 295) -->
+            <line x1="290" y1="295" x2="290" y2="265" stroke="#c0392b" stroke-width="1.8" marker-end="url(#fz)"/>
+            <line x1="290" y1="295" x2="318" y2="295" stroke="#27ae60" stroke-width="1.8" marker-end="url(#fx)"/>
+            <text x="295" y="261" fill="#c0392b" font-size="9">z₂</text>
+            <text x="320" y="290" fill="#27ae60" font-size="9">x₂</text>
+
+            <!-- Frame 3 at J3 (330, 230) -->
+            <line x1="330" y1="230" x2="330" y2="200" stroke="#c0392b" stroke-width="1.8" marker-end="url(#fz)"/>
+            <line x1="330" y1="230" x2="358" y2="230" stroke="#27ae60" stroke-width="1.8" marker-end="url(#fx)"/>
+            <text x="335" y="196" fill="#c0392b" font-size="9">z₃</text>
+            <text x="360" y="225" fill="#27ae60" font-size="9">x₃</text>
+
+            <!-- Frame 4 at J4 (370, 170) -->
+            <line x1="370" y1="170" x2="370" y2="143" stroke="#c0392b" stroke-width="1.5" marker-end="url(#fz)"/>
+            <line x1="370" y1="170" x2="395" y2="170" stroke="#27ae60" stroke-width="1.5" marker-end="url(#fx)"/>
+            <text x="373" y="139" fill="#c0392b" font-size="9">z₄</text>
+            <text x="397" y="165" fill="#27ae60" font-size="9">x₄</text>
+
+            <!-- Frame 7 / EEF at top -->
+            <line x1="395" y1="45" x2="395" y2="20" stroke="#c0392b" stroke-width="1.5" marker-end="url(#fz)"/>
+            <line x1="395" y1="45" x2="420" y2="45" stroke="#27ae60" stroke-width="1.5" marker-end="url(#fx)"/>
+            <text x="398" y="16" fill="#c0392b" font-size="9">z₇</text>
+            <text x="422" y="40" fill="#27ae60" font-size="9">x₇</text>
+
+            <!-- ══ DH param annotations (left side) ══ -->
+            <!-- d1 -->
+            <line x1="260" y1="415" x2="260" y2="360" stroke="#e67e22" stroke-width="1.2"
+                  marker-end="url(#oanno)" marker-start="url(#oanno2)"/>
+            <text x="220" y="392" fill="#e67e22" font-size="10" font-weight="600">d₁=0.333m</text>
+
+            <!-- d3 -->
+            <line x1="240" y1="295" x2="240" y2="230" stroke="#e67e22" stroke-width="1.2"
+                  marker-end="url(#oanno)" marker-start="url(#oanno2)"/>
+            <text x="178" y="267" fill="#e67e22" font-size="10" font-weight="600">d₃=0.316m</text>
+
+            <!-- d5 -->
+            <line x1="430" y1="170" x2="430" y2="115" stroke="#e67e22" stroke-width="1.2"
+                  marker-end="url(#oanno)" marker-start="url(#oanno2)"/>
+            <text x="434" y="147" fill="#e67e22" font-size="10" font-weight="600">d₅=0.384m</text>
+
+            <!-- a4 (horizontal offset) -->
+            <line x1="330" y1="195" x2="370" y2="195" stroke="#8e44ad" stroke-width="1.2"
+                  marker-end="url(#panno)" marker-start="url(#panno2)"/>
+            <text x="332" y="210" fill="#8e44ad" font-size="10" font-weight="600">a₄=0.0825m</text>
+
+            <!-- FK equation annotation -->
+            <rect x="20" y="15" width="215" height="65" rx="4" fill="#fffbf0" stroke="#f39c12" stroke-width="1"/>
+            <text x="127" y="32" text-anchor="middle" fill="#e67e22" font-weight="700" font-size="11">Forward Kinematics</text>
+            <text x="127" y="48" text-anchor="middle" fill="#555" font-size="10">T_EEF = T₁·T₂·T₃·T₄·T₅·T₆·T₇</text>
+            <text x="127" y="62" text-anchor="middle" fill="#555" font-size="10">One unique answer per joint config</text>
+            <text x="127" y="74" text-anchor="middle" fill="#888" font-size="9">q = [q₁, q₂, q₃, q₄, q₅, q₆, q₇]ᵀ</text>
+
+            <!-- defs -->
+            <defs>
+              <marker id="fz" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="fx" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+              <marker id="oanno" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#e67e22"/>
+              </marker>
+              <marker id="oanno2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+                <path d="M0,0 L0,6 L6,3 z" fill="#e67e22"/>
+              </marker>
+              <marker id="panno" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#8e44ad"/>
+              </marker>
+              <marker id="panno2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+                <path d="M0,0 L0,6 L6,3 z" fill="#8e44ad"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 2.2.</strong> The Panda kinematic chain with coordinate frames attached at
+          each joint. Red arrows are \(z\)-axes (joint rotation axes); green arrows are \(x\)-axes.
+          Orange double-headed arrows annotate the \(d_i\) (link offset) parameters; purple annotates
+          \(a_4\) (link length). The end-effector pose in the base frame is the product of all seven
+          joint transforms.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.4  Inverse Kinematics
+         ════════════════════════════════════ -->
+    <section id="ik">
+      <h2>2.4 Inverse Kinematics</h2>
+
+      <p>
+        <strong>Inverse kinematics</strong> (IK) is the reverse problem: given a desired end-effector
+        pose \(T_{\text{des}}\), find joint angles \(\mathbf{q}\) such that
+        \(T_{\text{EEF}}(\mathbf{q}) = T_{\text{des}}\). This is significantly harder than FK for
+        three reasons:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Multiple solutions.</strong> For most target poses, several different joint
+          configurations produce the same end-effector pose (e.g., elbow-up vs. elbow-down).
+        </li>
+        <li>
+          <strong>No solution.</strong> A target outside the workspace has no solution.
+        </li>
+        <li>
+          <strong>Infinite solutions (redundancy).</strong> The Panda has 7 DOF but only 6 are
+          needed to specify a pose. The extra DOF means there is a continuous one-dimensional
+          family of solutions — the <em>null space</em>.
+        </li>
+      </ul>
+
+      <h3>2.4.1 Analytical vs. Numerical IK</h3>
+
+      <table>
+        <thead>
+          <tr><th>Method</th><th>How it works</th><th>Speed</th><th>Used in MoveIt&nbsp;2</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Analytical</strong></td>
+            <td>Closed-form algebra (possible for specific arm geometries)</td>
+            <td>Microseconds</td>
+            <td>TRAC-IK (partially analytical)</td>
+          </tr>
+          <tr>
+            <td><strong>Numerical (Jacobian)</strong></td>
+            <td>Iterative gradient descent from a seed configuration</td>
+            <td>Milliseconds</td>
+            <td>KDL, TRAC-IK fallback</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        MoveIt&nbsp;2 uses <strong>TRAC-IK</strong>
+        <a class="cite" href="#ref3">[3]</a> by default for the Panda — a hybrid solver that attempts
+        an analytical solution first and falls back to numerical optimization. In practice, for your
+        Python code, you never call the IK solver directly: you give MoveIt&nbsp;2 a desired pose and
+        it solves IK internally before planning.
+      </p>
+
+      <h3>2.4.2 The Null Space</h3>
+      <p>
+        Because the Panda has 7 DOF, there is one extra degree of freedom beyond what is needed to
+        fix the end-effector pose. This manifests as a <em>null-space motion</em>: the arm can move
+        its joints (e.g., rotating the elbow around the shoulder-wrist axis) while keeping the
+        end-effector perfectly stationary. This is useful for:
+      </p>
+      <ul>
+        <li>Avoiding joint limits</li>
+        <li>Avoiding obstacles while the EEF stays on a Cartesian path</li>
+        <li>Maintaining a preferred elbow posture</li>
+      </ul>
+
+      <div class="callout callout-note">
+        <strong>Note:</strong> MoveIt&nbsp;2 automatically exploits the null space during motion
+        planning to avoid obstacles and joint limits. Chapter&nbsp;8 shows how to add explicit
+        constraints that further direct null-space motion.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.5  The Jacobian
+         ════════════════════════════════════ -->
+    <section id="jacobian">
+      <h2>2.5 The Jacobian</h2>
+
+      <p>
+        The <strong>Jacobian matrix</strong> \(J(\mathbf{q}) \in \mathbb{R}^{6 \times 7}\) is the
+        linearized relationship between joint velocities \(\dot{\mathbf{q}}\) and end-effector
+        velocities:
+      </p>
+
+      <div class="math-block">
+        \[
+          \mathbf{v} =
+          \begin{bmatrix} \dot{\mathbf{p}} \\ \boldsymbol{\omega} \end{bmatrix}
+          = J(\mathbf{q})\, \dot{\mathbf{q}}
+        \]
+      </div>
+
+      <p>
+        where \(\dot{\mathbf{p}} \in \mathbb{R}^3\) is the linear velocity of the end-effector and
+        \(\boldsymbol{\omega} \in \mathbb{R}^3\) is its angular velocity. The Jacobian depends on
+        the current joint configuration \(\mathbf{q}\) and must be recomputed whenever the arm moves.
+      </p>
+
+      <p>
+        The Jacobian is central to three important applications:
+      </p>
+      <ol>
+        <li>
+          <strong>Velocity control</strong> (Chapter&nbsp;6) — convert a desired EEF velocity into
+          joint velocity commands: \(\dot{\mathbf{q}} = J^+\mathbf{v}\) where \(J^+\) is the
+          pseudoinverse.
+        </li>
+        <li>
+          <strong>Impedance control</strong> (Chapter&nbsp;7) — map Cartesian forces/torques to
+          joint torques: \(\boldsymbol{\tau} = J^\top \mathbf{F}\).
+        </li>
+        <li>
+          <strong>Singularity detection</strong> — the arm is at a singularity when
+          \(\text{rank}(J) < 6\), i.e., when the Jacobian loses rank.
+        </li>
+      </ol>
+
+      <!-- ── Figure 2.3: Jacobian block diagram ── -->
+      <figure id="fig2-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 620 200" width="580" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="12">
+            <rect width="620" height="200" fill="#fafbfc" rx="4"/>
+
+            <!-- Input: q-dot vector -->
+            <rect x="20" y="65" width="130" height="70" rx="5" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
+            <text x="85" y="90" text-anchor="middle" fill="white" font-weight="700">Joint velocities</text>
+            <text x="85" y="108" text-anchor="middle" fill="#aed6f1" font-size="11">q̇ = [q̇₁, …, q̇₇]ᵀ</text>
+            <text x="85" y="124" text-anchor="middle" fill="#aed6f1" font-size="10">∈ ℝ⁷</text>
+
+            <!-- Arrow -->
+            <line x1="150" y1="100" x2="195" y2="100" stroke="#555" stroke-width="1.5" marker-end="url(#ba)"/>
+
+            <!-- Jacobian box -->
+            <rect x="195" y="50" width="140" height="100" rx="5" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="265" y="82" text-anchor="middle" fill="white" font-weight="700" font-size="14">J(q)</text>
+            <text x="265" y="102" text-anchor="middle" fill="#b8d4f5" font-size="11">6 × 7 matrix</text>
+            <text x="265" y="118" text-anchor="middle" fill="#b8d4f5" font-size="10">Changes with q</text>
+            <text x="265" y="133" text-anchor="middle" fill="#b8d4f5" font-size="10">(recompute each step)</text>
+
+            <!-- Arrow -->
+            <line x1="335" y1="100" x2="378" y2="100" stroke="#555" stroke-width="1.5" marker-end="url(#ba)"/>
+
+            <!-- Output: two parts -->
+            <!-- Linear velocity -->
+            <rect x="378" y="48" width="115" height="46" rx="5" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="435" y="68" text-anchor="middle" fill="white" font-weight="700" font-size="11">Linear velocity</text>
+            <text x="435" y="84" text-anchor="middle" fill="#a9dfbf" font-size="11">ṗ  ∈ ℝ³  (m/s)</text>
+
+            <!-- Angular velocity -->
+            <rect x="378" y="106" width="115" height="46" rx="5" fill="#8e44ad" stroke="#6c3483" stroke-width="1.5"/>
+            <text x="435" y="126" text-anchor="middle" fill="white" font-weight="700" font-size="11">Angular velocity</text>
+            <text x="435" y="142" text-anchor="middle" fill="#d7bde2" font-size="11">ω  ∈ ℝ³  (rad/s)</text>
+
+            <!-- Brace-like lines from output of J to two boxes -->
+            <line x1="378" y1="71" x2="358" y2="100" stroke="#aaa" stroke-width="1"/>
+            <line x1="378" y1="129" x2="358" y2="100" stroke="#aaa" stroke-width="1"/>
+
+            <!-- v = [p_dot; omega] label -->
+            <rect x="500" y="70" width="110" height="60" rx="4" fill="#fffbf0" stroke="#f39c12" stroke-width="1"/>
+            <text x="555" y="90" text-anchor="middle" fill="#e67e22" font-weight="700" font-size="11">v = J(q) q̇</text>
+            <text x="555" y="107" text-anchor="middle" fill="#555" font-size="10">EEF twist</text>
+            <text x="555" y="120" text-anchor="middle" fill="#555" font-size="10">v ∈ ℝ⁶</text>
+            <line x1="493" y1="71" x2="500" y2="90" stroke="#f39c12" stroke-width="1" stroke-dasharray="3,2"/>
+            <line x1="493" y1="129" x2="500" y2="110" stroke="#f39c12" stroke-width="1" stroke-dasharray="3,2"/>
+
+            <!-- Null-space annotation -->
+            <text x="265" y="170" text-anchor="middle" fill="#c0392b" font-size="10" font-weight="600">
+              Null space: q̇_null s.t. J(q) q̇_null = 0  →  7 – rank(J) = 1 dimension
+            </text>
+
+            <defs>
+              <marker id="ba" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L7,3 z" fill="#555"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 2.3.</strong> The Jacobian maps a vector of 7 joint velocities
+          \(\dot{\mathbf{q}} \in \mathbb{R}^7\) to the 6-dimensional end-effector twist
+          \(\mathbf{v} = [\dot{\mathbf{p}}^\top,\, \boldsymbol{\omega}^\top]^\top \in \mathbb{R}^6\).
+          Because \(J\) is \(6\times7\) (more columns than rows), the system is underdetermined:
+          one dimension of joint velocity produces no EEF motion — this is the null space.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.6  Workspace & Singularities
+         ════════════════════════════════════ -->
+    <section id="workspace">
+      <h2>2.6 Workspace and Singularities</h2>
+
+      <h3>2.6.1 Workspace</h3>
+      <p>
+        The <strong>workspace</strong> is the set of all end-effector positions reachable by the arm.
+        For the Panda, it is approximately a sphere of radius 855&nbsp;mm centered at the base, with a
+        dead zone near the base where the arm cannot reach itself.
+        Figure&nbsp;2.4 shows the cross-sectional envelope.
+      </p>
+
+      <!-- ── Figure 2.4: Workspace Envelope ── -->
+      <figure id="fig2-4">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 300" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="300" fill="#fafbfc" rx="4"/>
+
+            <!-- ── Side view (left) ── -->
+            <g transform="translate(30, 20)">
+              <text x="125" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">Side View (X-Z plane)</text>
+
+              <!-- Ground line -->
+              <line x1="0" y1="265" x2="250" y2="265" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+
+              <!-- Outer reachable arc -->
+              <path d="M 125 265
+                       A 210 210 0 0 1 125 55
+                       A 210 210 0 0 1 125 265 Z"
+                    fill="#e8f4fd" stroke="#2980b9" stroke-width="1.5" opacity="0.6"/>
+
+              <!-- Inner dead zone -->
+              <ellipse cx="125" cy="245" rx="48" ry="35"
+                       fill="#fafbfc" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+              <text x="125" y="248" text-anchor="middle" fill="#999" font-size="9">dead zone</text>
+
+              <!-- Base marker -->
+              <rect x="100" y="258" width="50" height="10" rx="2" fill="#bbb"/>
+              <text x="125" y="268" text-anchor="middle" fill="#555" font-size="9" dy="6">Base</text>
+
+              <!-- Max reach annotation -->
+              <line x1="125" y1="265" x2="125" y2="58" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="3,2"/>
+              <text x="130" y="155" fill="#c0392b" font-size="10" font-weight="600">855 mm</text>
+              <text x="130" y="167" fill="#c0392b" font-size="10">(max reach)</text>
+
+              <!-- Z axis -->
+              <line x1="8" y1="265" x2="8" y2="35" stroke="#c0392b" stroke-width="1.5" marker-end="url(#zax)"/>
+              <text x="12" y="32" fill="#c0392b" font-size="10">Z</text>
+              <!-- X axis -->
+              <line x1="8" y1="265" x2="238" y2="265" stroke="#27ae60" stroke-width="1.5" marker-end="url(#xax)"/>
+              <text x="235" y="260" fill="#27ae60" font-size="10">X</text>
+            </g>
+
+            <!-- ── Top view (right) ── -->
+            <g transform="translate(300, 20)">
+              <text x="120" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">Top View (X-Y plane)</text>
+
+              <!-- Outer workspace circle -->
+              <circle cx="120" cy="155" r="120" fill="#e8f4fd" stroke="#2980b9" stroke-width="1.5" opacity="0.6"/>
+
+              <!-- Inner dead zone circle -->
+              <circle cx="120" cy="155" r="32" fill="#fafbfc" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+              <text x="120" y="158" text-anchor="middle" fill="#999" font-size="9">dead</text>
+              <text x="120" y="169" text-anchor="middle" fill="#999" font-size="9">zone</text>
+
+              <!-- Base dot -->
+              <circle cx="120" cy="155" r="5" fill="#333"/>
+              <text x="128" y="159" fill="#555" font-size="9">Base</text>
+
+              <!-- radius annotation -->
+              <line x1="120" y1="155" x2="233" y2="125" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="3,2"/>
+              <text x="180" y="130" fill="#c0392b" font-size="10">855 mm</text>
+
+              <!-- X axis -->
+              <line x1="10" y1="155" x2="245" y2="155" stroke="#27ae60" stroke-width="1" stroke-dasharray="3,2"/>
+              <text x="247" y="158" fill="#27ae60" font-size="10">X</text>
+              <!-- Y axis -->
+              <line x1="120" y1="15" x2="120" y2="280" stroke="#3498db" stroke-width="1" stroke-dasharray="3,2"/>
+              <text x="124" y="14" fill="#3498db" font-size="10">Y</text>
+            </g>
+
+            <defs>
+              <marker id="zax" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="xax" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 2.4.</strong> The Panda workspace envelope.
+          <em>Left:</em> side view (X-Z plane) — the shaded region is reachable; the dashed ellipse
+          near the base is the dead zone where the arm cannot reach. <em>Right:</em> top view (X-Y
+          plane) — the workspace is approximately circular with an inner exclusion zone.
+          Maximum reach is 855&nbsp;mm from the base origin <a class="cite" href="#ref2">[2]</a>.
+        </figcaption>
+      </figure>
+
+      <h3>2.6.2 Singularities</h3>
+      <p>
+        A <strong>singularity</strong> is a joint configuration where the Jacobian loses rank —
+        meaning the arm loses the ability to move in one or more Cartesian directions, no matter
+        how fast the joints spin. Mathematically, this occurs when \(\det(J J^\top) = 0\).
+        Figure&nbsp;2.5 illustrates the two most common singularity types for the Panda.
+      </p>
+
+      <!-- ── Figure 2.5: Singularities ── -->
+      <figure id="fig2-5">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 310" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="310" fill="#fafbfc" rx="4"/>
+
+            <!-- ── Left: Wrist singularity ── -->
+            <g transform="translate(30, 20)">
+              <text x="120" y="18" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="12">Wrist Singularity</text>
+              <text x="120" y="33" text-anchor="middle" fill="#888" font-size="10">Joints 5, 6, 7 aligned</text>
+
+              <!-- Base -->
+              <rect x="90" y="275" width="60" height="14" rx="2" fill="#bbb"/>
+
+              <!-- Arm links in wrist-singular config -->
+              <line x1="120" y1="275" x2="120" y2="215" stroke="#c8d0dc" stroke-width="16" stroke-linecap="round"/>
+              <line x1="120" y1="215" x2="85"  y2="160" stroke="#c8d0dc" stroke-width="14" stroke-linecap="round"/>
+              <line x1="85"  y1="160" x2="120" y2="105" stroke="#c8d0dc" stroke-width="13" stroke-linecap="round"/>
+              <line x1="120" y1="105" x2="155" y2="70"  stroke="#c8d0dc" stroke-width="12" stroke-linecap="round"/>
+              <!-- Wrist: J5, J6, J7 all on the same axis (aligned) -->
+              <line x1="155" y1="70" x2="155" y2="50"  stroke="#c8d0dc" stroke-width="10" stroke-linecap="round"/>
+              <line x1="155" y1="50" x2="155" y2="35"  stroke="#c8d0dc" stroke-width="8"  stroke-linecap="round"/>
+
+              <!-- Joint circles -->
+              <circle cx="120" cy="215" r="12" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="120" y="219" text-anchor="middle" fill="white" font-size="9" font-weight="700">J1</text>
+              <circle cx="85"  cy="160" r="11" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="85" y="164" text-anchor="middle" fill="white" font-size="9" font-weight="700">J2</text>
+              <circle cx="120" cy="105" r="10" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="120" y="109" text-anchor="middle" fill="white" font-size="9" font-weight="700">J3</text>
+              <circle cx="155" cy="70" r="9" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="74" text-anchor="middle" fill="white" font-size="9" font-weight="700">J5</text>
+              <circle cx="155" cy="50" r="8" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="54" text-anchor="middle" fill="white" font-size="9" font-weight="700">J6</text>
+              <circle cx="155" cy="35" r="7" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="39" text-anchor="middle" fill="white" font-size="9" font-weight="700">J7</text>
+
+              <!-- Alignment arrow -->
+              <line x1="170" y1="35" x2="170" y2="70" stroke="#c0392b" stroke-width="2" stroke-dasharray="3,2"/>
+              <text x="175" y="55" fill="#c0392b" font-size="9" font-weight="600">z-axes</text>
+              <text x="175" y="66" fill="#c0392b" font-size="9" font-weight="600">aligned!</text>
+
+              <!-- Lost DOF annotation -->
+              <rect x="5" y="85" width="72" height="36" rx="3" fill="#fdf3f2" stroke="#e74c3c" stroke-width="1"/>
+              <text x="41" y="100" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="600">Loses 1 DOF</text>
+              <text x="41" y="113" text-anchor="middle" fill="#888" font-size="9">rotation about</text>
+              <text x="41" y="123" text-anchor="middle" fill="#888" font-size="9">EEF z-axis</text>
+            </g>
+
+            <!-- Divider -->
+            <line x1="290" y1="10" x2="290" y2="295" stroke="#ddd" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <!-- ── Right: Shoulder singularity ── -->
+            <g transform="translate(300, 20)">
+              <text x="130" y="18" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="12">Shoulder Singularity</text>
+              <text x="130" y="33" text-anchor="middle" fill="#888" font-size="10">Arm fully extended</text>
+
+              <!-- Base -->
+              <rect x="100" y="275" width="60" height="14" rx="2" fill="#bbb"/>
+
+              <!-- Arm fully extended straight up -->
+              <line x1="130" y1="275" x2="130" y2="220" stroke="#c8d0dc" stroke-width="16" stroke-linecap="round"/>
+              <line x1="130" y1="220" x2="130" y2="165" stroke="#c8d0dc" stroke-width="14" stroke-linecap="round"/>
+              <line x1="130" y1="165" x2="130" y2="115" stroke="#c8d0dc" stroke-width="13" stroke-linecap="round"/>
+              <line x1="130" y1="115" x2="130" y2="70"  stroke="#c8d0dc" stroke-width="12" stroke-linecap="round"/>
+              <line x1="130" y1="70"  x2="130" y2="42"  stroke="#c8d0dc" stroke-width="10" stroke-linecap="round"/>
+              <line x1="130" y1="42"  x2="130" y2="25"  stroke="#c8d0dc" stroke-width="8"  stroke-linecap="round"/>
+
+              <!-- Joint circles -->
+              <circle cx="130" cy="220" r="12" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="130" y="224" text-anchor="middle" fill="white" font-size="9" font-weight="700">J1</text>
+              <circle cx="130" cy="165" r="11" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="130" y="169" text-anchor="middle" fill="white" font-size="9" font-weight="700">J2</text>
+              <circle cx="130" cy="115" r="10" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="130" y="119" text-anchor="middle" fill="white" font-size="9" font-weight="700">J3</text>
+              <circle cx="130" cy="70"  r="9"  fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="130" y="74" text-anchor="middle" fill="white" font-size="9" font-weight="700">J4</text>
+              <circle cx="130" cy="42"  r="8"  fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+              <text x="130" y="46" text-anchor="middle" fill="white" font-size="9" font-weight="700">J5</text>
+              <rect x="118" y="10" width="24" height="12" rx="2" fill="#f39c12"/>
+              <text x="130" y="19" text-anchor="middle" fill="white" font-size="8">EEF</text>
+
+              <!-- Alignment annotation -->
+              <line x1="155" y1="220" x2="155" y2="165" stroke="#c0392b" stroke-width="2" stroke-dasharray="3,2"/>
+              <text x="160" y="197" fill="#c0392b" font-size="9" font-weight="600">J1, J2</text>
+              <text x="160" y="208" fill="#c0392b" font-size="9" font-weight="600">aligned!</text>
+
+              <!-- Lost DOF annotation -->
+              <rect x="8" y="130" width="80" height="46" rx="3" fill="#fdf3f2" stroke="#e74c3c" stroke-width="1"/>
+              <text x="48" y="147" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="600">Loses 1 DOF</text>
+              <text x="48" y="160" text-anchor="middle" fill="#888" font-size="9">cannot move EEF</text>
+              <text x="48" y="171" text-anchor="middle" fill="#888" font-size="9">horizontally</text>
+              <text x="48" y="182" text-anchor="middle" fill="#888" font-size="9">without J1,J2 racing</text>
+            </g>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 2.5.</strong> The two most common singularities for the Panda.
+          <em>Left:</em> Wrist singularity — joints J5, J6, J7 have co-aligned rotation axes;
+          the arm loses the ability to rotate the end-effector about one axis.
+          <em>Right:</em> Shoulder singularity — the arm is fully extended; joints J1 and J2
+          become aligned and the arm loses the ability to translate the EEF radially.
+          MoveIt&nbsp;2 detects and avoids singular configurations during planning.
+        </figcaption>
+      </figure>
+
+      <div class="callout callout-warning">
+        <strong>Warning:</strong> Commanding a robot through a singularity causes joint velocities
+        to spike toward infinity in theory. In practice, the Panda's reflex system will trigger a
+        protective stop. Always check that planned trajectories avoid singular configurations —
+        MoveIt&nbsp;2's planners do this by default.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════
+         §2.7  Code Examples
+         ════════════════════════════════════ -->
+    <section id="code">
+      <h2>2.7 Code Examples</h2>
+
+      <h3>2.7.1 Manual Forward Kinematics</h3>
+      <p>
+        The following script computes the Panda's end-effector pose for a given joint configuration
+        by multiplying the seven DH transform matrices explicitly using NumPy. Running it confirms
+        your understanding of FK before relying on MoveIt&nbsp;2's internal solver.
+      </p>
+
+      <div class="code-header">fk_manual.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Compute Panda forward kinematics manually using Denavit-Hartenberg parameters.
+No ROS or MoveIt required — pure NumPy.
+
+Usage:
+    python3 fk_manual.py
+
+Output:
+    4x4 end-effector transform in the base frame, plus position and RPY angles.
+"""
+
+import numpy as np
+
+# ── Panda DH parameters: (a, d, alpha) per joint ──────────────────────────────
+# Source: Franka Robotics technical documentation [2]
+# Columns: a_i (m),  d_i (m),  alpha_i (rad)
+DH = np.array([
+    [0,       0.333,   0         ],   # Joint 1
+    [0,       0,      -np.pi/2   ],   # Joint 2
+    [0,       0.316,   np.pi/2   ],   # Joint 3
+    [0.0825,  0,       np.pi/2   ],   # Joint 4
+    [-0.0825, 0.384,  -np.pi/2   ],   # Joint 5
+    [0,       0,       np.pi/2   ],   # Joint 6
+    [0.088,   0,       np.pi/2   ],   # Joint 7
+    [0,       0.107,   0         ],   # EEF (fixed, theta=0)
+])
+
+
+def dh_transform(a: float, d: float, alpha: float, theta: float) -> np.ndarray:
+    """Return the 4x4 homogeneous DH transform matrix for one joint."""
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = np.cos(alpha), np.sin(alpha)
+    return np.array([
+        [ct,  -st*ca,   st*sa,  a*ct],
+        [st,   ct*ca,  -ct*sa,  a*st],
+        [0,    sa,      ca,     d   ],
+        [0,    0,       0,      1   ],
+    ])
+
+
+def forward_kinematics(q: np.ndarray) -> np.ndarray:
+    """
+    Compute the end-effector pose given a 7-element joint angle vector.
+
+    Args:
+        q: joint angles [q1..q7] in radians
+
+    Returns:
+        T_eef: 4x4 homogeneous transform of the end-effector in base frame
+    """
+    if q.shape != (7,):
+        raise ValueError(f"Expected 7 joint angles, got {q.shape}")
+
+    T = np.eye(4)
+    for i in range(7):
+        a, d, alpha = DH[i]
+        T = T @ dh_transform(a, d, alpha, q[i])
+
+    # Fixed end-effector offset (theta = 0)
+    a, d, alpha = DH[7]
+    T = T @ dh_transform(a, d, alpha, theta=0.0)
+    return T
+
+
+def rotation_to_rpy(R: np.ndarray) -> tuple[float, float, float]:
+    """Extract roll-pitch-yaw (XYZ convention) from a 3x3 rotation matrix."""
+    pitch = np.arctan2(-R[2, 0], np.sqrt(R[0, 0]**2 + R[1, 0]**2))
+    if np.abs(np.cos(pitch)) < 1e-10:
+        roll  = 0.0
+        yaw   = np.arctan2(-R[1, 2], R[1, 1])
+    else:
+        roll  = np.arctan2(R[2, 1] / np.cos(pitch), R[2, 2] / np.cos(pitch))
+        yaw   = np.arctan2(R[1, 0] / np.cos(pitch), R[0, 0] / np.cos(pitch))
+    return roll, pitch, yaw
+
+
+def main():
+    # Panda "ready" pose (approximate, used in many MoveIt demos)
+    q_ready = np.array([0, -np.pi/4, 0, -3*np.pi/4, 0, np.pi/2, np.pi/4])
+
+    T = forward_kinematics(q_ready)
+
+    print("=" * 55)
+    print("Panda Forward Kinematics — 'ready' configuration")
+    print("=" * 55)
+    print("\nJoint angles (deg):")
+    print("  ", np.round(np.degrees(q_ready), 2))
+
+    print("\nEnd-effector transform T_EEF (4x4):")
+    for row in T:
+        print("  ", np.round(row, 5))
+
+    position = T[:3, 3]
+    roll, pitch, yaw = rotation_to_rpy(T[:3, :3])
+    print(f"\nPosition (m):  x={position[0]:.4f}  y={position[1]:.4f}  z={position[2]:.4f}")
+    print(f"Orientation:   roll={np.degrees(roll):.2f}°  "
+          f"pitch={np.degrees(pitch):.2f}°  yaw={np.degrees(yaw):.2f}°")
+
+    # Sanity check: all-zeros joint angles
+    q_zero = np.zeros(7)
+    T_zero = forward_kinematics(q_zero)
+    print(f"\nAll-zeros config EEF position: {np.round(T_zero[:3,3], 4)}")
+    print("  (should be directly above the base, ~0.915 m up)")
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>2.7.2 Numerical Jacobian Estimation</h3>
+      <p>
+        This script estimates the Panda's geometric Jacobian numerically using finite differences.
+        It is useful for verifying analytical Jacobian implementations and for understanding
+        which joints contribute most to end-effector motion at a given configuration.
+        The script also computes the <strong>manipulability</strong> — a single number
+        \(w = \sqrt{\det(J J^\top)}\) that summarises how freely the end-effector can move in
+        all directions from the current configuration. A value of zero means the arm is at a
+        singularity; larger values mean more dexterous motion is available
+        <a class="cite" href="#ref4">[4]</a>.
+      </p>
+
+      <div class="code-header">jacobian_numerical.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Numerically estimate the Panda geometric Jacobian via finite differences.
+
+The geometric Jacobian J(q) ∈ R^{6x7} satisfies:
+    [p_dot; omega] = J(q) @ q_dot
+
+We estimate it column-by-column: perturb q_i by +/- eps, observe the change
+in the FK result, and divide by 2*eps (central difference).
+
+Usage:
+    python3 jacobian_numerical.py
+"""
+
+import numpy as np
+from fk_manual import forward_kinematics
+
+
+def rotation_to_axis_angle_velocity(R_a: np.ndarray, R_b: np.ndarray,
+                                     eps: float) -> np.ndarray:
+    """
+    Approximate angular velocity omega from two nearby rotation matrices.
+    Uses the skew-symmetric part of (R_b @ R_a^T) / (2*eps).
+    """
+    dR = (R_b @ R_a.T - R_a @ R_b.T) / (4 * eps)
+    # Extract [omega_x, omega_y, omega_z] from skew-symmetric dR
+    return np.array([dR[2, 1], dR[0, 2], dR[1, 0]])
+
+
+def jacobian_numerical(q: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    """
+    Compute the 6x7 geometric Jacobian at configuration q via central differences.
+
+    Args:
+        q:   joint angles, shape (7,)
+        eps: finite difference step size (radians)
+
+    Returns:
+        J: (6, 7) Jacobian matrix
+          Rows 0-2: linear velocity (dp/dq)
+          Rows 3-5: angular velocity (domega/dq)
+    """
+    J = np.zeros((6, 7))
+    T0 = forward_kinematics(q)
+
+    for i in range(7):
+        q_plus  = q.copy(); q_plus[i]  += eps
+        q_minus = q.copy(); q_minus[i] -= eps
+
+        T_plus  = forward_kinematics(q_plus)
+        T_minus = forward_kinematics(q_minus)
+
+        # Linear velocity column: central difference of position
+        J[:3, i] = (T_plus[:3, 3] - T_minus[:3, 3]) / (2 * eps)
+
+        # Angular velocity column: from rotation matrix change
+        J[3:, i] = rotation_to_axis_angle_velocity(
+            T_minus[:3, :3], T_plus[:3, :3], eps
+        )
+
+    return J
+
+
+def manipulability(J: np.ndarray) -> float:
+    """
+    Yoshikawa manipulability measure: sqrt(det(J J^T)).
+    Zero at singularities, larger = more dexterous.
+    """
+    return float(np.sqrt(max(0, np.linalg.det(J @ J.T))))
+
+
+def main():
+    q_ready = np.array([0, -np.pi/4, 0, -3*np.pi/4, 0, np.pi/2, np.pi/4])
+
+    J = jacobian_numerical(q_ready)
+
+    print("=" * 60)
+    print("Panda Geometric Jacobian at 'ready' configuration")
+    print("=" * 60)
+    print("\nJ (6x7) — rows: [vx, vy, vz, wx, wy, wz], cols: joints 1-7")
+    header = "       " + "  ".join(f"  J{i+1}   " for i in range(7))
+    print(header)
+    row_labels = ["vx", "vy", "vz", "wx", "wy", "wz"]
+    for row_label, row in zip(row_labels, J):
+        formatted = "  ".join(f"{v:+.4f}" for v in row)
+        print(f"  {row_label}:  {formatted}")
+
+    m = manipulability(J)
+    print(f"\nYoshikawa manipulability:  {m:.6f}")
+    print("  (0 = singular, larger = more dexterous)")
+
+    # Demonstrate near-singular configuration
+    q_singular = np.array([0, 0, 0, 0, 0, 0, 0])  # all zeros → near shoulder sing.
+    J_sing = jacobian_numerical(q_singular)
+    m_sing = manipulability(J_sing)
+    print(f"\nManipulability at all-zeros config: {m_sing:.6f}")
+    print("  (closer to 0 → near singularity)")
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <div class="callout callout-tip">
+        <strong>Run both scripts together:</strong> Since <code>jacobian_numerical.py</code> imports
+        <code>forward_kinematics</code> from <code>fk_manual.py</code>, both files must be in the
+        same directory. Run <code>python3 fk_manual.py</code> first, then
+        <code>python3 jacobian_numerical.py</code>.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════
+         Exercises
+         ════════════════════════════════════ -->
+    <section id="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Run <code>fk_manual.py</code> with the all-zeros joint configuration.
+          What is the end-effector position? Verify by tracing through the \(d_i\) values in
+          Table&nbsp;2.1 manually (they should sum to approximately 0.915&nbsp;m along the z-axis).
+        </li>
+        <li>
+          Modify <code>fk_manual.py</code> to sweep \(q_1\) from \(-\pi/2\) to \(\pi/2\) in
+          10 steps while keeping all other joints at zero. Print the end-effector position at each
+          step. What does the path trace out in space?
+        </li>
+        <li>
+          Run <code>jacobian_numerical.py</code>. Which column of \(J\) has the largest magnitude?
+          What does that tell you about which joint has the most influence on end-effector motion
+          at the ready configuration?
+        </li>
+        <li>
+          Look up the term "manipulability ellipsoid" (Yoshikawa, 1985
+          <a class="cite" href="#ref4">[4]</a>). In one paragraph, explain what the ellipsoid's
+          shape tells you about the arm's preferred directions of motion at a given configuration.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 2</h3>
+      <dl>
+        <dt>Homogeneous transform</dt><dd>A \(4\times4\) matrix encoding both rotation and translation.</dd>
+        <dt>DH parameters</dt><dd>Four numbers \((a,d,\alpha,\theta)\) that define the transform between consecutive joint frames.</dd>
+        <dt>Forward kinematics</dt><dd>The map from joint angles to end-effector pose; always unique.</dd>
+        <dt>Inverse kinematics</dt><dd>The map from desired pose to joint angles; may have multiple, zero, or infinite solutions.</dd>
+        <dt>Jacobian</dt><dd>The \(6\times7\) matrix relating joint velocities to end-effector velocities.</dd>
+        <dt>Null space</dt><dd>The set of joint velocities that produce zero end-effector velocity; dimension = 1 for the Panda.</dd>
+        <dt>Singularity</dt><dd>A configuration where the Jacobian loses rank; the arm cannot move in certain directions.</dd>
+        <dt>Workspace</dt><dd>The set of all end-effector positions reachable by the arm.</dd>
+        <dt>Manipulability</dt><dd>A scalar measure of how far the arm is from a singularity; \(\sqrt{\det(JJ^\top)}\).</dd>
+        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver used by MoveIt&nbsp;2 for the Panda.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          J. Denavit and R. S. Hartenberg, "A Kinematic Notation for Lower-Pair Mechanisms Based
+          on Matrices," <em>ASME Journal of Applied Mechanics</em>, vol. 22, pp. 215–221, Jun. 1955.
+        </li>
+        <li id="ref2">
+          Franka Robotics GmbH, <em>Panda Technical Specifications &amp; libfranka Documentation</em>,
+          2023. Available: <a href="https://frankaemika.github.io/docs/">https://frankaemika.github.io/docs/</a>
+        </li>
+        <li id="ref3">
+          P. Beeson and B. Ames, "TRAC-IK: An Open-Source Library for Improved Solving of Generic
+          Inverse Kinematics," in <em>Proc. IEEE-RAS 15th Int. Conf. Humanoid Robots (Humanoids)</em>,
+          Seoul, South Korea, Nov. 2015, pp. 928–935.
+        </li>
+        <li id="ref4">
+          T. Yoshikawa, "Manipulability of Robotic Mechanisms," <em>International Journal of
+          Robotics Research</em>, vol. 4, no. 2, pp. 3–9, 1985.
+        </li>
+        <li id="ref5">
+          J. J. Craig, <em>Introduction to Robotics: Mechanics and Control</em>, 3rd ed.
+          Upper Saddle River, NJ: Pearson Prentice Hall, 2005, ch. 3–4.
+        </li>
+        <li id="ref6">
+          B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo,
+          <em>Robotics: Modelling, Planning and Control</em>. London: Springer, 2009, ch. 2–3.
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch01.html">&larr; Chapter 1: Foundations</a>
+    <span class="page-info">Chapter 2 of 10</span>
+    <a href="ch03.html">Chapter 3: Simulation &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

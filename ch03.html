@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3 · Simulation Environment — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><a href="index.html">Programming Robot Arms</a><div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div></div>
+    <nav>
+      <ul><li><a href="index.html">Home &amp; Contents</a></li></ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html" class="active">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#overview">3.1 Component Overview</a></li>
+          <li><a href="#urdf">3.2 URDF &amp; XACRO</a></li>
+          <li><a href="#tf">3.3 The TF Tree</a></li>
+          <li><a href="#controllers">3.4 Controller Manager</a></li>
+          <li><a href="#launching">3.5 Launching the Sim</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <header class="site-header">
+    <span class="chapter-label">Chapter 3</span>
+    <h1>The Simulation Environment</h1>
+  </header>
+
+  <main>
+    <div class="chapter-abstract">
+      Before touching real hardware, every motion should be tested in simulation. This chapter explains
+      the three simulation components — Gazebo, RViz, and MoveIt&nbsp;2 — how they communicate, and how to
+      launch them together for the Panda. You will learn to inspect the TF tree, verify controller
+      loading, and confirm that your development environment exactly mirrors what runs on real hardware.
+    </div>
+
+    <section id="overview">
+      <h2>3.1 Simulation Component Overview</h2>
+      <p>
+        Three programs form the simulation stack. Each does a distinct job; understanding their
+        boundaries prevents confusion when something goes wrong.
+      </p>
+      <ul>
+        <li><strong>Gazebo</strong> — a physics engine. It simulates motor dynamics, gravity, inertia,
+            and contact forces. From ROS&nbsp;2's perspective it appears as a hardware interface that
+            publishes <code>/joint_states</code> and accepts joint commands.</li>
+        <li><strong>RViz</strong> — a 3D visualization tool. It <em>does not simulate physics</em>;
+            it only renders what it reads from ROS&nbsp;2 topics (joint states, TF frames, planning
+            scenes). Running RViz without Gazebo shows the robot "frozen" at its initial pose.</li>
+        <li><strong>MoveIt&nbsp;2</strong> — the motion planning framework (<code>move_group</code> node).
+            It is physics-agnostic; it plans trajectories and sends them to whatever controller manager
+            is active — Gazebo in simulation, the real FCI on hardware.</li>
+      </ul>
+
+      <!-- Figure 3.1: Simulation Component Map -->
+      <figure id="fig3-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 680 360" width="640" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="680" height="360" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="ca" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#555"/></marker>
+              <marker id="ca2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#27ae60"/></marker>
+            </defs>
+
+            <!-- Gazebo -->
+            <rect x="30" y="130" width="150" height="70" rx="6" fill="#e74c3c" stroke="#c0392b" stroke-width="1.5"/>
+            <text x="105" y="158" text-anchor="middle" fill="white" font-weight="700" font-size="13">Gazebo</text>
+            <text x="105" y="174" text-anchor="middle" fill="#fad7d7" font-size="10">Physics simulation</text>
+            <text x="105" y="186" text-anchor="middle" fill="#fad7d7" font-size="10">Panda URDF + gz_ros2_control</text>
+
+            <!-- robot_state_publisher -->
+            <rect x="30" y="30" width="150" height="58" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="105" y="52" text-anchor="middle" fill="white" font-weight="700" font-size="12">robot_state</text>
+            <text x="105" y="66" text-anchor="middle" fill="white" font-weight="700" font-size="12">_publisher</text>
+            <text x="105" y="80" text-anchor="middle" fill="#aed6f1" font-size="10">Broadcasts /tf from URDF</text>
+
+            <!-- controller_manager -->
+            <rect x="30" y="240" width="150" height="58" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
+            <text x="105" y="262" text-anchor="middle" fill="white" font-weight="700" font-size="12">controller</text>
+            <text x="105" y="276" text-anchor="middle" fill="white" font-weight="700" font-size="12">_manager</text>
+            <text x="105" y="290" text-anchor="middle" fill="#85c1e9" font-size="10">Loads/activates controllers</text>
+
+            <!-- move_group (MoveIt 2) -->
+            <rect x="265" y="130" width="165" height="70" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="347" y="157" text-anchor="middle" fill="white" font-weight="700" font-size="13">move_group</text>
+            <text x="347" y="173" text-anchor="middle" fill="#a9dfbf" font-size="10">MoveIt 2 planning node</text>
+            <text x="347" y="185" text-anchor="middle" fill="#a9dfbf" font-size="10">OMPL · FCL · TRAC-IK</text>
+
+            <!-- rviz2 -->
+            <rect x="265" y="30" width="165" height="58" rx="6" fill="#8e44ad" stroke="#6c3483" stroke-width="1.5"/>
+            <text x="347" y="55" text-anchor="middle" fill="white" font-weight="700" font-size="13">RViz 2</text>
+            <text x="347" y="70" text-anchor="middle" fill="#d7bde2" font-size="10">3D visualization only</text>
+            <text x="347" y="82" text-anchor="middle" fill="#d7bde2" font-size="10">Reads topics, no physics</text>
+
+            <!-- JointTrajectoryController -->
+            <rect x="265" y="240" width="165" height="58" rx="6" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="347" y="262" text-anchor="middle" fill="white" font-weight="700" font-size="11">JointTrajectory</text>
+            <text x="347" y="276" text-anchor="middle" fill="white" font-weight="700" font-size="11">Controller</text>
+            <text x="347" y="290" text-anchor="middle" fill="#b8d4f5" font-size="10">Tracks planned trajectory</text>
+
+            <!-- Your node -->
+            <rect x="500" y="130" width="155" height="58" rx="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="577" y="155" text-anchor="middle" fill="white" font-weight="700" font-size="12">your_node.py</text>
+            <text x="577" y="170" text-anchor="middle" fill="#fdebd0" font-size="10">User Python code</text>
+            <text x="577" y="182" text-anchor="middle" fill="#fdebd0" font-size="10">MoveGroup client</text>
+
+            <!-- Arrows -->
+            <!-- Gazebo → robot_state_pub: /joint_states -->
+            <line x1="105" y1="130" x2="105" y2="88" stroke="#555" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="110" y="113" fill="#555" font-size="9">/joint_states</text>
+
+            <!-- robot_state_pub → rviz: /tf -->
+            <line x1="180" y1="59" x2="265" y2="59" stroke="#2980b9" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="195" y="54" fill="#2980b9" font-size="9">/tf, /tf_static</text>
+
+            <!-- Gazebo → move_group: /joint_states -->
+            <line x1="180" y1="165" x2="265" y2="165" stroke="#e74c3c" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="188" y="159" fill="#e74c3c" font-size="9">/joint_states</text>
+
+            <!-- move_group → rviz: planning scene -->
+            <line x1="347" y1="130" x2="347" y2="88" stroke="#27ae60" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="352" y="113" fill="#27ae60" font-size="9">/planning_scene</text>
+
+            <!-- your_node → move_group -->
+            <line x1="500" y1="159" x2="430" y2="159" stroke="#e67e22" stroke-width="2" marker-end="url(#ca)"/>
+            <text x="435" y="153" fill="#e67e22" font-size="9">MoveGroup</text>
+            <text x="435" y="163" fill="#e67e22" font-size="9">action goal</text>
+
+            <!-- move_group → JTC -->
+            <line x1="347" y1="200" x2="347" y2="240" stroke="#27ae60" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="352" y="225" fill="#27ae60" font-size="9">follow_joint</text>
+            <text x="352" y="235" fill="#27ae60" font-size="9">_trajectory</text>
+
+            <!-- JTC → Gazebo (commands) -->
+            <line x1="265" y1="280" x2="180" y2="230" stroke="#0057b8" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="190" y="255" fill="#0057b8" font-size="9">/joint_cmds</text>
+
+            <!-- controller_manager → JTC (loads) -->
+            <line x1="180" y1="269" x2="265" y2="269" stroke="#1a5276" stroke-width="1.5" marker-end="url(#ca)"/>
+            <text x="193" y="263" fill="#1a5276" font-size="9">loads/activates</text>
+
+            <!-- Legend -->
+            <rect x="490" y="240" width="170" height="100" rx="4" fill="#f0f0f0" stroke="#ccc"/>
+            <text x="575" y="257" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Legend</text>
+            <rect x="500" y="265" width="16" height="12" rx="2" fill="#e74c3c"/>
+            <text x="520" y="275" fill="#333" font-size="10">Physics (Gazebo)</text>
+            <rect x="500" y="283" width="16" height="12" rx="2" fill="#27ae60"/>
+            <text x="520" y="293" fill="#333" font-size="10">Planning (MoveIt 2)</text>
+            <rect x="500" y="301" width="16" height="12" rx="2" fill="#0057b8"/>
+            <text x="520" y="311" fill="#333" font-size="10">Control layer</text>
+            <rect x="500" y="319" width="16" height="12" rx="2" fill="#e67e22"/>
+            <text x="520" y="329" fill="#333" font-size="10">User code</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 3.1.</strong> The full simulation component map. Gazebo provides physics and
+          publishes <code>/joint_states</code>; <code>robot_state_publisher</code> converts that into
+          TF frames; <code>move_group</code> plans trajectories and sends them to the
+          <code>JointTrajectoryController</code>, which commands Gazebo. Your Python node only
+          communicates with <code>move_group</code>.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="urdf">
+      <h2>3.2 The URDF and XACRO Model</h2>
+      <p>
+        The <strong>Unified Robot Description Format</strong> (URDF) is an XML file that describes
+        the robot's geometry, inertial properties, and joint limits <a class="cite" href="#ref1">[1]</a>.
+        For the Panda, the URDF is split into several <strong>XACRO</strong> (XML macro) files that
+        are assembled at launch time. Figure&nbsp;3.2 shows the include hierarchy.
+      </p>
+
+      <!-- Figure 3.2: URDF/XACRO Structure -->
+      <figure id="fig3-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 310" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="310" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="xa" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#555"/></marker>
+            </defs>
+
+            <!-- Root -->
+            <rect x="190" y="20" width="200" height="46" rx="5" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="290" y="41" text-anchor="middle" fill="white" font-weight="700">panda.urdf.xacro</text>
+            <text x="290" y="57" text-anchor="middle" fill="#b8d4f5" font-size="10">Top-level assembly file</text>
+
+            <!-- Branch 1: panda_arm -->
+            <rect x="30" y="120" width="170" height="52" rx="5" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="115" y="141" text-anchor="middle" fill="white" font-weight="700">panda_arm.urdf.xacro</text>
+            <text x="115" y="157" text-anchor="middle" fill="#aed6f1" font-size="10">Links, joints, DH geometry</text>
+            <text x="115" y="167" text-anchor="middle" fill="#aed6f1" font-size="10">Inertial properties</text>
+
+            <!-- Branch 2: hand -->
+            <rect x="215" y="120" width="150" height="52" rx="5" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="290" y="141" text-anchor="middle" fill="white" font-weight="700">panda_hand.xacro</text>
+            <text x="290" y="157" text-anchor="middle" fill="#aed6f1" font-size="10">Gripper fingers</text>
+            <text x="290" y="167" text-anchor="middle" fill="#aed6f1" font-size="10">Finger joint limits</text>
+
+            <!-- Branch 3: ros2_control -->
+            <rect x="378" y="120" width="175" height="52" rx="5" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="465" y="141" text-anchor="middle" fill="white" font-weight="700">ros2_control.xacro</text>
+            <text x="465" y="157" text-anchor="middle" fill="#a9dfbf" font-size="10">Hardware interface tags</text>
+            <text x="465" y="167" text-anchor="middle" fill="#a9dfbf" font-size="10">Sim vs. real selection</text>
+
+            <!-- Leaf: collision meshes -->
+            <rect x="30" y="230" width="170" height="42" rx="5" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.5"/>
+            <text x="115" y="249" text-anchor="middle" fill="white" font-weight="700">meshes/</text>
+            <text x="115" y="263" text-anchor="middle" fill="#ecf0f1" font-size="10">Visual &amp; collision STL files</text>
+
+            <!-- Leaf: gazebo plugin -->
+            <rect x="378" y="230" width="175" height="42" rx="5" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="465" y="249" text-anchor="middle" fill="white" font-weight="700">gz_ros2_control plugin</text>
+            <text x="465" y="263" text-anchor="middle" fill="#fdebd0" font-size="10">Gazebo ↔ ros2_control bridge</text>
+
+            <!-- Connect lines -->
+            <line x1="290" y1="66" x2="115" y2="120" stroke="#555" stroke-width="1.2" marker-end="url(#xa)"/>
+            <line x1="290" y1="66" x2="290" y2="120" stroke="#555" stroke-width="1.2" marker-end="url(#xa)"/>
+            <line x1="290" y1="66" x2="465" y2="120" stroke="#555" stroke-width="1.2" marker-end="url(#xa)"/>
+            <line x1="115" y1="172" x2="115" y2="230" stroke="#555" stroke-width="1.2" marker-end="url(#xa)"/>
+            <line x1="465" y1="172" x2="465" y2="230" stroke="#555" stroke-width="1.2" marker-end="url(#xa)"/>
+
+            <!-- Labels on connect lines -->
+            <text x="170" y="100" fill="#555" font-size="9">xacro:include</text>
+            <text x="295" y="100" fill="#555" font-size="9">xacro:include</text>
+            <text x="358" y="100" fill="#555" font-size="9">xacro:include</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 3.2.</strong> The URDF/XACRO include hierarchy for the Franka Panda.
+          The top-level <code>panda.urdf.xacro</code> includes three sub-files: arm geometry,
+          hand geometry, and the <code>ros2_control</code> hardware interface tags that select
+          between Gazebo simulation and real-hardware mode at launch time.
+        </figcaption>
+      </figure>
+
+      <h3>Key URDF Concepts</h3>
+      <p>The URDF encodes the robot as a <em>kinematic tree</em> of alternating <code>&lt;link&gt;</code>
+      and <code>&lt;joint&gt;</code> elements:</p>
+      <div class="code-header">panda.urdf (excerpt — one link/joint pair)</div>
+<pre><code class="language-xml">&lt;link name="panda_link2"&gt;
+  &lt;inertial&gt;
+    &lt;mass value="2.7426"/&gt;
+    &lt;inertia ixx="7.0337e-3" iyy="7.0661e-3" izz="1.2805e-3" .../&gt;
+  &lt;/inertial&gt;
+  &lt;visual&gt;&lt;geometry&gt;&lt;mesh filename="meshes/visual/link2.dae"/&gt;&lt;/geometry&gt;&lt;/visual&gt;
+  &lt;collision&gt;&lt;geometry&gt;&lt;mesh filename="meshes/collision/link2.stl"/&gt;&lt;/geometry&gt;&lt;/collision&gt;
+&lt;/link&gt;
+
+&lt;joint name="panda_joint2" type="revolute"&gt;
+  &lt;parent link="panda_link1"/&gt;
+  &lt;child  link="panda_link2"/&gt;
+  &lt;origin xyz="0 0 0" rpy="-1.5708 0 0"/&gt;  &lt;!-- DH alpha_2 = -pi/2 --&gt;
+  &lt;axis xyz="0 0 1"/&gt;
+  &lt;limit lower="-1.7628" upper="1.7628" velocity="1.4835" effort="87"/&gt;
+&lt;/joint&gt;</code></pre>
+    </section>
+
+    <section id="tf">
+      <h2>3.3 The TF Tree</h2>
+      <p>
+        The <strong>TF2</strong> library maintains a tree of coordinate frame transforms that any
+        node can query at any time <a class="cite" href="#ref2">[2]</a>. For the Panda,
+        <code>robot_state_publisher</code> continuously publishes the transform from each link
+        to its parent based on the current <code>/joint_states</code>. Figure&nbsp;3.3 shows the
+        full Panda TF tree.
+      </p>
+
+      <!-- Figure 3.3: TF Tree -->
+      <figure id="fig3-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 340" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="340" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="tfa" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#2980b9"/></marker>
+            </defs>
+
+            <!-- world -->
+            <rect x="220" y="15" width="140" height="30" rx="4" fill="#333" stroke="#222" stroke-width="1.2"/>
+            <text x="290" y="34" text-anchor="middle" fill="white" font-weight="700">world</text>
+
+            <!-- panda_link0 -->
+            <rect x="200" y="75" width="180" height="30" rx="4" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <text x="290" y="94" text-anchor="middle" fill="white" font-weight="700">panda_link0 (base)</text>
+
+            <!-- panda_link1 … 7 -->
+            <rect x="220" y="135" width="140" height="28" rx="4" fill="#2980b9" stroke="#1a6491" stroke-width="1.2"/>
+            <text x="290" y="153" text-anchor="middle" fill="white">panda_link1</text>
+
+            <!-- dots -->
+            <text x="290" y="185" text-anchor="middle" fill="#2980b9" font-size="18" font-weight="700">⋮</text>
+
+            <rect x="220" y="200" width="140" height="28" rx="4" fill="#2980b9" stroke="#1a6491" stroke-width="1.2"/>
+            <text x="290" y="218" text-anchor="middle" fill="white">panda_link7</text>
+
+            <!-- panda_hand -->
+            <rect x="200" y="258" width="180" height="28" rx="4" fill="#27ae60" stroke="#1e8449" stroke-width="1.2"/>
+            <text x="290" y="276" text-anchor="middle" fill="white" font-weight="700">panda_hand (EEF)</text>
+
+            <!-- panda_leftfinger / rightfinger -->
+            <rect x="60" y="310" width="155" height="22" rx="4" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.2"/>
+            <text x="137" y="324" text-anchor="middle" fill="white" font-size="10">panda_leftfinger</text>
+
+            <rect x="365" y="310" width="155" height="22" rx="4" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.2"/>
+            <text x="442" y="324" text-anchor="middle" fill="white" font-size="10">panda_rightfinger</text>
+
+            <!-- panda_EE (virtual tool frame) -->
+            <rect x="30" y="258" width="150" height="28" rx="4" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2"/>
+            <text x="105" y="276" text-anchor="middle" fill="white" font-weight="700">panda_EE</text>
+            <text x="105" y="286" text-anchor="middle" fill="#fdebd0" font-size="9">virtual tool frame</text>
+
+            <!-- Lines -->
+            <line x1="290" y1="45" x2="290" y2="75" stroke="#2980b9" stroke-width="1.5" marker-end="url(#tfa)"/>
+            <line x1="290" y1="105" x2="290" y2="135" stroke="#2980b9" stroke-width="1.5" marker-end="url(#tfa)"/>
+            <line x1="290" y1="163" x2="290" y2="176" stroke="#2980b9" stroke-width="1.5" marker-end="url(#tfa)"/>
+            <line x1="290" y1="193" x2="290" y2="200" stroke="#2980b9" stroke-width="1.5" marker-end="url(#tfa)"/>
+            <line x1="290" y1="228" x2="290" y2="258" stroke="#2980b9" stroke-width="1.5" marker-end="url(#tfa)"/>
+            <!-- hand to fingers -->
+            <line x1="250" y1="286" x2="137" y2="310" stroke="#2980b9" stroke-width="1.2" marker-end="url(#tfa)"/>
+            <line x1="330" y1="286" x2="442" y2="310" stroke="#2980b9" stroke-width="1.2" marker-end="url(#tfa)"/>
+            <!-- link7 to panda_EE (side branch) -->
+            <line x1="220" y1="214" x2="105" y2="258" stroke="#e67e22" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#tfa)"/>
+            <text x="130" y="240" fill="#e67e22" font-size="9">panda_EEF</text>
+            <text x="130" y="250" fill="#e67e22" font-size="9">offset</text>
+
+            <!-- annotation -->
+            <rect x="425" y="130" width="140" height="80" rx="4" fill="#f0f6ff" stroke="#b8d4f5"/>
+            <text x="495" y="148" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Key frames</text>
+            <text x="495" y="163" text-anchor="middle" fill="#555" font-size="10">panda_link0 = robot base</text>
+            <text x="495" y="176" text-anchor="middle" fill="#555" font-size="10">panda_hand  = EEF mount</text>
+            <text x="495" y="189" text-anchor="middle" fill="#555" font-size="10">panda_EE   = tool center</text>
+            <text x="495" y="202" text-anchor="middle" fill="#555" font-size="10">world       = sim origin</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 3.3.</strong> The Panda TF tree published by
+          <code>robot_state_publisher</code>. Each arrow represents a transform
+          updated at 1&nbsp;kHz. The <code>panda_EE</code> virtual tool frame
+          (orange) is a fixed offset from <code>panda_link7</code> and is the
+          frame used for Cartesian planning in Chapter&nbsp;5.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="controllers">
+      <h2>3.4 The Controller Manager</h2>
+      <p>
+        The <code>controller_manager</code> node loads, configures, and activates controllers.
+        Each controller has a lifecycle state machine with four states, shown in Figure&nbsp;3.4.
+        Only one controller can be active per hardware interface at a time — switching from
+        position to impedance control means deactivating the position controller first.
+      </p>
+
+      <!-- Figure 3.4: Controller Manager State Machine -->
+      <figure id="fig3-4">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 220" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="220" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="sm" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#555"/></marker>
+              <marker id="sm2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#aaa"/></marker>
+            </defs>
+
+            <!-- States -->
+            <rect x="30" y="85" width="110" height="48" rx="6" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.5"/>
+            <text x="85" y="106" text-anchor="middle" fill="white" font-weight="700">UNCONFIGURED</text>
+            <text x="85" y="122" text-anchor="middle" fill="#ecf0f1" font-size="10">(loaded only)</text>
+
+            <rect x="185" y="85" width="110" height="48" rx="6" fill="#f39c12" stroke="#d68910" stroke-width="1.5"/>
+            <text x="240" y="106" text-anchor="middle" fill="white" font-weight="700">INACTIVE</text>
+            <text x="240" y="122" text-anchor="middle" fill="#fef9e7" font-size="10">(configured, idle)</text>
+
+            <rect x="340" y="85" width="110" height="48" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="395" y="106" text-anchor="middle" fill="white" font-weight="700">ACTIVE</text>
+            <text x="395" y="122" text-anchor="middle" fill="#a9dfbf" font-size="10">(running)</text>
+
+            <rect x="495" y="85" width="75" height="48" rx="6" fill="#c0392b" stroke="#922b21" stroke-width="1.5"/>
+            <text x="532" y="109" text-anchor="middle" fill="white" font-weight="700">ERROR</text>
+
+            <!-- Forward transitions (top) -->
+            <line x1="140" y1="104" x2="185" y2="104" stroke="#555" stroke-width="1.5" marker-end="url(#sm)"/>
+            <text x="152" y="99" fill="#0057b8" font-size="9">configure</text>
+            <line x1="295" y1="104" x2="340" y2="104" stroke="#555" stroke-width="1.5" marker-end="url(#sm)"/>
+            <text x="302" y="99" fill="#27ae60" font-size="9">activate</text>
+            <line x1="450" y1="104" x2="495" y2="104" stroke="#c0392b" stroke-width="1.5" marker-end="url(#sm)"/>
+            <text x="453" y="99" fill="#c0392b" font-size="9">error</text>
+
+            <!-- Reverse transitions (bottom) -->
+            <line x1="185" y1="122" x2="140" y2="122" stroke="#aaa" stroke-width="1.2" marker-end="url(#sm2)"/>
+            <text x="148" y="140" fill="#aaa" font-size="9">cleanup</text>
+            <line x1="340" y1="122" x2="295" y2="122" stroke="#aaa" stroke-width="1.2" marker-end="url(#sm2)"/>
+            <text x="300" y="140" fill="#aaa" font-size="9">deactivate</text>
+
+            <!-- Start arrow -->
+            <line x1="10" y1="109" x2="30" y2="109" stroke="#333" stroke-width="1.5" marker-end="url(#sm)"/>
+            <text x="2" y="105" fill="#555" font-size="9">load</text>
+
+            <!-- Note about switch_controllers -->
+            <rect x="80" y="165" width="420" height="40" rx="4" fill="#f0f6ff" stroke="#b8d4f5"/>
+            <text x="290" y="181" text-anchor="middle" fill="#0057b8" font-size="11" font-weight="600">
+              ros2 control switch_controllers --activate JTC --deactivate VelCtrl
+            </text>
+            <text x="290" y="197" text-anchor="middle" fill="#555" font-size="10">
+              Transitions happen atomically — one controller deactivates before another activates
+            </text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 3.4.</strong> Controller lifecycle state machine. A controller must be
+          configured before activation and deactivated before cleanup. The
+          <code>switch_controllers</code> service transitions multiple controllers atomically,
+          ensuring no gap in control coverage during mode switches.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="launching">
+      <h2>3.5 Launching the Simulation</h2>
+      <p>
+        The following scripts launch the complete simulation stack and provide diagnostic commands
+        to verify every component is running correctly.
+      </p>
+
+      <div class="code-header">launch_sim.sh — Launch Gazebo + RViz + MoveIt 2</div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+# Launch the full Panda simulation stack.
+# Run this in a dedicated terminal; it stays open.
+
+source /opt/ros/humble/setup.bash
+source ~/panda_ws/install/setup.bash
+
+ros2 launch franka_moveit_config moveit.launch.py \
+    robot_ip:=dont_need_it \
+    use_fake_hardware:=true \
+    fake_sensor_commands:=true
+
+# What each argument does:
+#   robot_ip:=dont_need_it     → placeholder (not used in simulation)
+#   use_fake_hardware:=true    → load Gazebo/fake hardware interface instead of FCI
+#   fake_sensor_commands:=true → allow setting joint states via service for testing</code></pre>
+
+      <div class="code-header">inspect_tf.sh — Dump TF tree to a PDF</div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+# Dump the running TF tree to frames.pdf (requires graphviz)
+source /opt/ros/humble/setup.bash
+
+ros2 run tf2_tools view_frames &
+sleep 3
+kill %1 2>/dev/null
+
+echo "TF tree saved to frames.pdf"
+echo ""
+echo "--- Static transforms ---"
+ros2 topic echo /tf_static --once
+
+echo ""
+echo "--- Dynamic transforms (first message) ---"
+ros2 topic echo /tf --once | head -50</code></pre>
+
+      <div class="code-header">list_controllers.sh — Verify controllers are active</div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+source /opt/ros/humble/setup.bash
+
+echo "=== Active controllers ==="
+ros2 control list_controllers
+
+echo ""
+echo "=== Hardware interfaces ==="
+ros2 control list_hardware_interfaces
+
+echo ""
+echo "=== Hardware components ==="
+ros2 control list_hardware_components
+
+# Expected output (sim):
+# [active] joint_state_broadcaster/JointStateBroadcaster
+# [active] panda_arm_controller/JointTrajectoryController
+# [active] panda_hand_controller/GripperActionController</code></pre>
+
+      <div class="callout callout-tip">
+        <strong>Tip:</strong> Open three terminals: one for the launch file, one for RViz (which
+        opens automatically), and one for diagnostic commands. Never kill the launch terminal
+        while controllers are active — it can leave the ros2_control state machine in an
+        inconsistent state requiring a full restart.
+      </div>
+    </section>
+
+    <section id="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>Launch the simulation and run <code>ros2 topic list | grep -v param</code>.
+            How many topics are published? Identify the topic that carries gripper state.</li>
+        <li>Run <code>inspect_tf.sh</code> and open <code>frames.pdf</code>.
+            How many frames are in the tree? What is the parent of <code>panda_link4</code>?</li>
+        <li>Run <code>list_controllers.sh</code>. Are the three expected controllers active?
+            What happens if you run <code>ros2 control switch_controllers --deactivate panda_arm_controller</code>?
+            Can you reactivate it?</li>
+      </ol>
+    </section>
+
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 3</h3>
+      <dl>
+        <dt>Gazebo</dt><dd>A physics-based robot simulator that publishes joint states and accepts joint commands.</dd>
+        <dt>RViz</dt><dd>A 3D visualization tool; reads topics but has no physics.</dd>
+        <dt>URDF</dt><dd>XML format describing robot geometry, inertia, and joint limits.</dd>
+        <dt>XACRO</dt><dd>An XML macro system used to modularize URDF files.</dd>
+        <dt>TF2</dt><dd>ROS&nbsp;2 library that maintains a tree of time-stamped coordinate transforms.</dd>
+        <dt>controller_manager</dt><dd>Manages the lifecycle (load, configure, activate, deactivate) of ros2_control controllers.</dd>
+      </dl>
+    </aside>
+
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">K. Conley et al., "URDF: Unified Robot Description Format," Open Robotics, 2009. Available: <a href="http://wiki.ros.org/urdf">http://wiki.ros.org/urdf</a></li>
+        <li id="ref2">E. Marder-Eppstein, T. Foote, et al., "tf: The Transform Library," in <em>Proc. IEEE/RSJ IROS Workshop on SW Dev. and Integration in Robotics</em>, 2013.</li>
+        <li id="ref3">Franka Robotics GmbH, <em>franka_ros2 Documentation</em>, 2023. Available: <a href="https://github.com/frankaemika/franka_ros2">https://github.com/frankaemika/franka_ros2</a></li>
+        <li id="ref4">V. Mayoral-Vilches et al., "ros2_control: A Generic Control Framework for ROS 2," <em>arXiv preprint</em> arXiv:2106.12685, 2021.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <a href="ch02.html">&larr; Chapter 2: Kinematics</a>
+    <span class="page-info">Chapter 3 of 10</span>
+    <a href="ch04.html">Chapter 4: Position Control &rarr;</a>
+  </footer>
+</div>
+<script>window.MathJax={tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

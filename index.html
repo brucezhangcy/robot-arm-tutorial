@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Programming Robot Arms — A Tutorial</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Index-specific overrides */
+    .hero {
+      background: linear-gradient(135deg, #0057b8 0%, #003d82 100%);
+      color: #fff;
+      padding: 3rem 2.5rem;
+      border-radius: 0 0 var(--radius) var(--radius);
+      margin-bottom: 2.5rem;
+    }
+    .hero h2 {
+      color: #fff;
+      border-bottom-color: rgba(255,255,255,.3);
+      font-size: 1.8rem;
+      margin-top: 0;
+    }
+    .hero p { color: rgba(255,255,255,.88); margin-bottom: .6rem; }
+    .hero .meta { font-size: .82rem; color: rgba(255,255,255,.6); margin-top: 1.2rem; }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    @media (max-width: 680px) { .toc-grid { grid-template-columns: 1fr; } }
+
+    .toc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.25rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: box-shadow .15s, border-color .15s;
+      display: block;
+    }
+    .toc-card:hover {
+      box-shadow: 0 3px 12px rgba(0,87,184,.15);
+      border-color: var(--accent);
+      text-decoration: none;
+    }
+    .toc-card .card-num {
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: .3rem;
+    }
+    .toc-card h3 {
+      font-size: .97rem;
+      margin: 0 0 .4rem;
+      color: var(--text);
+      border: none;
+    }
+    .toc-card p {
+      font-size: .8rem;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.4;
+    }
+    .toc-card.capstone { border-left: 3px solid #27ae60; }
+    .toc-card.centerpiece { border-left: 3px solid var(--accent); }
+
+    .prereq-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: .75rem;
+      margin: 1rem 0;
+    }
+    @media (max-width: 680px) { .prereq-grid { grid-template-columns: 1fr; } }
+
+    .prereq-item {
+      background: #f4f6f9;
+      border-radius: var(--radius);
+      padding: .75rem 1rem;
+      font-size: .85rem;
+    }
+    .prereq-item strong { display: block; margin-bottom: .2rem; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html" class="active">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- Header -->
+  <header class="site-header">
+    <span class="chapter-label">Introduction</span>
+    <h1>Programming Robot Arms: A Technical Tutorial</h1>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+
+    <div class="hero">
+      <h2>Programming Robot Arms</h2>
+      <p>
+        A hands-on technical guide to programming the <strong>Franka Emika Panda</strong> 7-DOF collaborative
+        robot arm using <strong>Python</strong> and <strong>ROS&nbsp;2</strong>. From fundamentals to a complete
+        pick-and-place application.
+      </p>
+      <p>
+        You will simulate, analyze, and control a research-grade robot arm — the same hardware used in
+        university labs and industrial research worldwide.
+      </p>
+      <div class="meta">
+        Target audience: High school students with programming curiosity &nbsp;·&nbsp;
+        Written at undergraduate technical level &nbsp;·&nbsp;
+        All sources cited in IEEE format
+      </div>
+    </div>
+
+    <!-- ── About this tutorial ── -->
+    <h2 id="about">About This Tutorial</h2>
+    <p>
+      Robot arms are at the frontier of automation, manufacturing, surgical assistance, and space exploration.
+      Programming one requires integrating <em>mechanical intuition</em>, <em>control theory</em>, and
+      <em>software engineering</em> — a rare combination that this tutorial develops step by step.
+    </p>
+    <p>
+      We use the <strong>Franka Emika Panda</strong> as our hardware reference. The Panda is a 7-degree-of-freedom
+      collaborative robot arm with built-in torque sensing at every joint, making it one of the most capable
+      and well-documented platforms available for education and research
+      <a class="cite" href="#ref1">[1]</a>.
+      All software is open-source: <strong>ROS&nbsp;2</strong> <a class="cite" href="#ref2">[2]</a>,
+      <strong>MoveIt&nbsp;2</strong> <a class="cite" href="#ref3">[3]</a>, and
+      <strong>franka_ros2</strong> <a class="cite" href="#ref4">[4]</a>.
+    </p>
+
+    <div class="callout callout-note">
+      <strong>Note:</strong> Every chapter begins in <em>simulation</em> (Gazebo + RViz). Chapter&nbsp;9 covers
+      the transition to real hardware. You can complete Chapters 1–8 and the capstone Chapter&nbsp;10 entirely
+      in simulation without a physical robot.
+    </div>
+
+    <!-- ── Prerequisites ── -->
+    <h2 id="prerequisites">Prerequisites</h2>
+    <p>You do not need prior robotics experience. Here is what helps:</p>
+
+    <div class="prereq-grid">
+      <div class="prereq-item">
+        <strong>Python basics</strong>
+        Variables, functions, loops, and importing libraries (e.g., <code>numpy</code>).
+      </div>
+      <div class="prereq-item">
+        <strong>High school math</strong>
+        Trigonometry, vectors, and basic matrix multiplication.
+      </div>
+      <div class="prereq-item">
+        <strong>Linux comfort</strong>
+        Opening a terminal, running commands, editing files with a text editor.
+      </div>
+    </div>
+
+    <p>
+      Background material is provided in <a href="appendix.html#ros2-primer">Appendix&nbsp;A</a> for readers
+      who want a refresher on ROS&nbsp;2 concepts and Python patterns used throughout the tutorial.
+    </p>
+
+    <!-- ── Hardware & Software ── -->
+    <h2 id="requirements">Requirements</h2>
+
+    <h3>Hardware</h3>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Specification</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Computer</td><td>x86-64, ≥ 16 GB RAM, ≥ 4 CPU cores</td><td>Required for Gazebo simulation</td></tr>
+        <tr><td>GPU</td><td>Optional</td><td>Speeds up Gazebo rendering</td></tr>
+        <tr><td>Franka Panda</td><td>Optional (Chapters 1–8 and 10 are simulation-only)</td><td>See Chapter&nbsp;9 for real-hardware setup</td></tr>
+        <tr><td>Ethernet NIC</td><td>1 Gbps (if using real robot)</td><td>Required for FCI real-time communication</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Software</h3>
+    <table>
+      <thead>
+        <tr><th>Package</th><th>Version</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Ubuntu</td><td>22.04 LTS (Jammy)</td><td>Operating system</td></tr>
+        <tr><td>ROS&nbsp;2</td><td>Humble Hawksbill</td><td>Robot middleware framework</td></tr>
+        <tr><td>MoveIt&nbsp;2</td><td>2.5+</td><td>Motion planning</td></tr>
+        <tr><td>Gazebo</td><td>Ignition Fortress</td><td>Physics simulation</td></tr>
+        <tr><td>franka_ros2</td><td>0.1.x</td><td>Panda hardware interface</td></tr>
+        <tr><td>Python</td><td>3.10+</td><td>User code and examples</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ── Table of Contents ── -->
+    <h2 id="contents">Table of Contents</h2>
+
+    <div class="toc-grid">
+      <a class="toc-card" href="ch01.html">
+        <div class="card-num">Chapter 1</div>
+        <h3>Foundations &amp; Toolchain</h3>
+        <p>Panda hardware anatomy, ROS&nbsp;2 architecture, package ecosystem, and installation verification.</p>
+      </a>
+
+      <a class="toc-card" href="ch02.html">
+        <div class="card-num">Chapter 2</div>
+        <h3>Kinematics &amp; Coordinate Frames</h3>
+        <p>Forward kinematics, DH parameters, inverse kinematics, Jacobian, workspace, and singularities.</p>
+      </a>
+
+      <a class="toc-card" href="ch03.html">
+        <div class="card-num">Chapter 3</div>
+        <h3>Simulation Environment</h3>
+        <p>Launching Gazebo + RViz + MoveIt&nbsp;2, the URDF model, TF tree, and controller manager.</p>
+      </a>
+
+      <a class="toc-card" href="ch04.html">
+        <div class="card-num">Chapter 4</div>
+        <h3>Position Control — Joint Space</h3>
+        <p>MoveIt&nbsp;2 planning pipeline, joint trajectory execution, and monitoring joint state feedback.</p>
+      </a>
+
+      <a class="toc-card" href="ch05.html">
+        <div class="card-num">Chapter 5</div>
+        <h3>Position Control — Cartesian</h3>
+        <p>SE(3) pose representation, <code>compute_cartesian_path</code>, and frame conventions.</p>
+      </a>
+
+      <a class="toc-card" href="ch06.html">
+        <div class="card-num">Chapter 6</div>
+        <h3>Velocity Control</h3>
+        <p>Joint velocity controller, trapezoidal profiles, watchdog timers, and real-time constraints.</p>
+      </a>
+
+      <a class="toc-card centerpiece" href="ch07.html">
+        <div class="card-num">Chapter 7 · Centerpiece</div>
+        <h3>Impedance &amp; Torque Control</h3>
+        <p>The MIT impedance law, mass-spring-damper analogy, mapping to Franka's controller, and gain tuning.</p>
+      </a>
+
+      <a class="toc-card" href="ch08.html">
+        <div class="card-num">Chapter 8</div>
+        <h3>MoveIt&nbsp;2 Deep Dive</h3>
+        <p>OMPL planners, collision objects, path constraints, and the full Python planning API.</p>
+      </a>
+
+      <a class="toc-card" href="ch09.html">
+        <div class="card-num">Chapter 9</div>
+        <h3>Transitioning to Real Hardware</h3>
+        <p>Safety checklist, franka_ros2 bringup, latency differences, and protective stop procedures.</p>
+      </a>
+
+      <a class="toc-card capstone" href="ch10.html">
+        <div class="card-num">Chapter 10 · Capstone</div>
+        <h3>Pick and Place Application</h3>
+        <p>A complete Python state-machine integrating perception, Cartesian planning, gripper control, and error recovery.</p>
+      </a>
+    </div>
+
+    <!-- ── How to use ── -->
+    <h2 id="how-to-use">How to Use This Tutorial</h2>
+    <p>
+      Chapters are designed to be read <em>in order</em>. Each chapter introduces vocabulary and code patterns
+      that later chapters use without re-defining. If you skip ahead, cross-references will point you back to
+      the relevant section.
+    </p>
+    <p>
+      Every chapter follows the same structure:
+    </p>
+    <ol>
+      <li><strong>Concept introduction</strong> — motivation and intuition before math or code.</li>
+      <li><strong>System diagram</strong> — a labeled diagram that the surrounding text explains.</li>
+      <li><strong>Technical depth</strong> — math, API details, and cited sources.</li>
+      <li><strong>Code example</strong> — a complete, runnable Python or bash script.</li>
+      <li><strong>Exercises</strong> — short tasks to test understanding.</li>
+    </ol>
+
+    <div class="callout callout-tip">
+      <strong>Tip:</strong> Run every code example yourself. Understanding deepens dramatically when you
+      observe the robot moving in response to code you typed.
+    </div>
+
+    <!-- ── Citation note ── -->
+    <h2 id="citations">A Note on Citations</h2>
+    <p>
+      This tutorial cites its sources in IEEE format, the same convention used in robotics journal papers
+      and conference proceedings. When you see a superscript like
+      <a class="cite" href="#ref1">[1]</a>, it refers to a numbered entry in the References section
+      at the bottom of the page. Primary sources are always preferred: hardware datasheets, peer-reviewed
+      papers, and official software documentation.
+    </p>
+
+    <!-- ── References ── -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          S. Haddadin, A. Albu-Schäffer, et al., "The Franka Emika Robot: A Reference Platform for
+          Robotics Research and Education," <em>IEEE Robotics and Automation Letters</em>, vol. 7,
+          no. 2, pp. 2309–2316, Apr. 2022. DOI: 10.1109/LRA.2022.3147388.
+        </li>
+        <li id="ref2">
+          S. Macenski, T. Foote, B. Gerkey, C. Lalancette, and W. Woodall, "Robot Operating System
+          2: Design, Architecture, and Uses in the Wild," <em>Science Robotics</em>, vol. 7, no. 66,
+          eabm6074, May 2022. DOI: 10.1126/scirobotics.abm6074.
+        </li>
+        <li id="ref3">
+          D. Coleman, I. Sucan, S. Chitta, and N. Correll, "Reducing the Barrier to Entry of Complex
+          Robotic Software: a MoveIt! Case Study," <em>Journal of Software Engineering for
+          Robotics</em>, vol. 5, no. 1, pp. 3–16, 2014.
+        </li>
+        <li id="ref4">
+          Franka Robotics GmbH, <em>franka_ros2</em> [Software], 2023.
+          Available: <a href="https://github.com/frankaemika/franka_ros2">https://github.com/frankaemika/franka_ros2</a>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <span></span>
+    <span class="page-info">Programming Robot Arms · Franka Panda Tutorial</span>
+    <a href="ch01.html">Chapter 1: Foundations &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<!-- MathJax -->
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+</body>
+</html>

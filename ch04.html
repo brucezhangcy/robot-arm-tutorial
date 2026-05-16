@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4 · Position Control — Joint Space — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><a href="index.html">Programming Robot Arms</a><div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div></div>
+    <nav>
+      <ul><li><a href="index.html">Home &amp; Contents</a></li></ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html" class="active">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#joint-vs-cartesian">4.1 Joint vs. Cartesian Space</a></li>
+          <li><a href="#pipeline">4.2 The Planning Pipeline</a></li>
+          <li><a href="#action">4.3 The MoveGroup Action</a></li>
+          <li><a href="#code">4.4 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <header class="site-header">
+    <span class="chapter-label">Chapter 4</span>
+    <h1>Position Control — Joint Space</h1>
+  </header>
+
+  <main>
+    <div class="chapter-abstract">
+      The simplest way to command a robot arm is to specify a desired set of joint angles and let
+      the planner find a safe trajectory to reach them. This chapter explains how MoveIt&nbsp;2
+      translates a joint-space goal into executed motion: the planning pipeline, the
+      <code>JointTrajectoryController</code>, and the MoveGroup action interface. By the end you
+      will have Python code that moves the Panda to any joint configuration in simulation.
+    </div>
+
+    <section id="joint-vs-cartesian">
+      <h2>4.1 Joint Space vs. Cartesian Space</h2>
+      <p>
+        There are two natural coordinate systems for describing a robot arm's configuration:
+      </p>
+      <table>
+        <thead><tr><th>Space</th><th>Variables</th><th>Dimension</th><th>Best for</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Joint space</strong></td><td>Joint angles \(\mathbf{q} = [q_1,\ldots,q_7]\)</td><td>\(\mathbb{R}^7\)</td><td>Named poses, home positions</td></tr>
+          <tr><td><strong>Cartesian (task) space</strong></td><td>EEF pose \((x,y,z,R)\)</td><td>\(SE(3)\)</td><td>Manipulation, straight-line paths</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Joint-space control (this chapter) is simpler to reason about: you specify where each
+        motor should end up, and the planner finds a collision-free path through joint angles.
+        The end-effector path in Cartesian space is <em>not</em> straight — it follows whatever
+        arc the joints trace out. For picking and placing that's fine; for drawing a straight
+        line or sliding along a surface, use Cartesian control (Chapter&nbsp;5).
+      </p>
+    </section>
+
+    <section id="pipeline">
+      <h2>4.2 The MoveIt&nbsp;2 Planning Pipeline</h2>
+      <p>
+        When you call <code>move_group.go()</code>, MoveIt&nbsp;2 runs a <em>planning pipeline</em>
+        that transforms your high-level goal into a stream of joint position setpoints delivered
+        to the <code>JointTrajectoryController</code> at 1&nbsp;kHz. Figure&nbsp;4.1 shows every
+        stage.
+      </p>
+
+      <!-- Figure 4.1: Planning Pipeline -->
+      <figure id="fig4-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 660 180" width="620" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="660" height="180" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="pa" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#555"/></marker>
+              <marker id="fb" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#c0392b"/></marker>
+            </defs>
+
+            <!-- Stage 1: Goal -->
+            <rect x="10" y="55" width="95" height="68" rx="5" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="57" y="78" text-anchor="middle" fill="white" font-weight="700" font-size="11">Goal</text>
+            <text x="57" y="93" text-anchor="middle" fill="#fdebd0" font-size="9">Joint config</text>
+            <text x="57" y="105" text-anchor="middle" fill="#fdebd0" font-size="9">q_target ∈ R⁷</text>
+            <text x="57" y="117" text-anchor="middle" fill="#fdebd0" font-size="9">or named pose</text>
+
+            <!-- Arrow -->
+            <line x1="105" y1="89" x2="130" y2="89" stroke="#555" stroke-width="1.5" marker-end="url(#pa)"/>
+
+            <!-- Stage 2: OMPL Planner -->
+            <rect x="130" y="45" width="120" height="88" rx="5" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="190" y="68" text-anchor="middle" fill="white" font-weight="700">OMPL Planner</text>
+            <text x="190" y="84" text-anchor="middle" fill="#a9dfbf" font-size="9">RRTConnect (default)</text>
+            <text x="190" y="97" text-anchor="middle" fill="#a9dfbf" font-size="9">Samples C-space</text>
+            <text x="190" y="110" text-anchor="middle" fill="#a9dfbf" font-size="9">Avoids collisions</text>
+            <text x="190" y="123" text-anchor="middle" fill="#a9dfbf" font-size="9">via FCL checker</text>
+
+            <line x1="250" y1="89" x2="275" y2="89" stroke="#555" stroke-width="1.5" marker-end="url(#pa)"/>
+
+            <!-- Stage 3: Post-processing -->
+            <rect x="275" y="55" width="110" height="68" rx="5" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="330" y="75" text-anchor="middle" fill="white" font-weight="700">Post-process</text>
+            <text x="330" y="90" text-anchor="middle" fill="#aed6f1" font-size="9">Simplify path</text>
+            <text x="330" y="103" text-anchor="middle" fill="#aed6f1" font-size="9">Time parameterize</text>
+            <text x="330" y="116" text-anchor="middle" fill="#aed6f1" font-size="9">(vel/acc limits)</text>
+
+            <line x1="385" y1="89" x2="410" y2="89" stroke="#555" stroke-width="1.5" marker-end="url(#pa)"/>
+
+            <!-- Stage 4: JTC -->
+            <rect x="410" y="45" width="115" height="88" rx="5" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="467" y="68" text-anchor="middle" fill="white" font-weight="700">JointTrajectory</text>
+            <text x="467" y="82" text-anchor="middle" fill="white" font-weight="700">Controller</text>
+            <text x="467" y="98" text-anchor="middle" fill="#b8d4f5" font-size="9">PID on each joint</text>
+            <text x="467" y="111" text-anchor="middle" fill="#b8d4f5" font-size="9">1 kHz update rate</text>
+            <text x="467" y="124" text-anchor="middle" fill="#b8d4f5" font-size="9">Tracks waypoints</text>
+
+            <line x1="525" y1="89" x2="548" y2="89" stroke="#555" stroke-width="1.5" marker-end="url(#pa)"/>
+
+            <!-- Stage 5: Robot -->
+            <rect x="548" y="62" width="95" height="54" rx="5" fill="#333" stroke="#222" stroke-width="1.5"/>
+            <text x="595" y="82" text-anchor="middle" fill="white" font-weight="700">Robot</text>
+            <text x="595" y="97" text-anchor="middle" fill="#ccc" font-size="9">(Gazebo or real)</text>
+            <text x="595" y="109" text-anchor="middle" fill="#ccc" font-size="9">Actuates joints</text>
+
+            <!-- Feedback arrow (bottom) -->
+            <path d="M 595 116 Q 595 155 330 155 Q 65 155 57 123" fill="none"
+                  stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#fb)"/>
+            <text x="330" y="150" text-anchor="middle" fill="#c0392b" font-size="9">
+              /joint_states feedback (position, velocity, effort)
+            </text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 4.1.</strong> The MoveIt&nbsp;2 joint-space planning pipeline.
+          The OMPL planner samples the 7D joint-configuration space (C-space) to find a
+          collision-free path, which is then time-parameterized to respect velocity and
+          acceleration limits. The <code>JointTrajectoryController</code> tracks the resulting
+          waypoint sequence using independent PID loops at 1&nbsp;kHz. The red dashed line
+          shows the <code>/joint_states</code> feedback loop used for error correction.
+        </figcaption>
+      </figure>
+
+      <h3>4.2.1 The Configuration Space (C-space)</h3>
+      <p>
+        The planner does not work in 3D Euclidean space. It works in <strong>C-space</strong>
+        (configuration space) — the 7-dimensional space of all possible joint angle vectors.
+        Each point in C-space is one complete arm configuration; each collision-free point is in
+        <em>free space</em> \(C_{\text{free}}\). The planner's job is to find a path from
+        the start point to the goal point entirely within \(C_{\text{free}}\).
+        RRTConnect (the default planner) grows two random trees from start and goal simultaneously
+        until they meet <a class="cite" href="#ref1">[1]</a>.
+      </p>
+
+      <h3>4.2.2 Time Parameterization</h3>
+      <p>
+        The raw planner output is a sequence of waypoints with no timing information.
+        MoveIt&nbsp;2 then runs a <em>time parameterizer</em> (TOTG — Time-Optimal Trajectory
+        Generation) that assigns timestamps to each waypoint such that joint velocity limits
+        (e.g., 2.175&nbsp;rad/s for joint&nbsp;1) and acceleration limits are never exceeded
+        <a class="cite" href="#ref2">[2]</a>. You can scale the resulting speed down via
+        <code>move_group.set_max_velocity_scaling_factor(0.1)</code> for extra caution.
+      </p>
+
+      <!-- Figure 4.2: Joint Trajectory Plot -->
+      <figure id="fig4-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 560 220" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="560" height="220" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="ax" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#333"/></marker>
+            </defs>
+
+            <!-- Axes -->
+            <line x1="60" y1="170" x2="520" y2="170" stroke="#333" stroke-width="1.5" marker-end="url(#ax)"/>
+            <line x1="60" y1="170" x2="60" y2="20" stroke="#333" stroke-width="1.5" marker-end="url(#ax)"/>
+            <text x="540" y="174" fill="#333" font-size="11">t (s)</text>
+            <text x="25" y="18" fill="#333" font-size="11">q (rad)</text>
+
+            <!-- Gridlines -->
+            <line x1="60" y1="120" x2="518" y2="120" stroke="#eee" stroke-width="1"/>
+            <line x1="60" y1="70" x2="518" y2="70" stroke="#eee" stroke-width="1"/>
+            <line x1="175" y1="170" x2="175" y2="22" stroke="#eee" stroke-width="1"/>
+            <line x1="290" y1="170" x2="290" y2="22" stroke="#eee" stroke-width="1"/>
+            <line x1="405" y1="170" x2="405" y2="22" stroke="#eee" stroke-width="1"/>
+
+            <!-- Tick labels -->
+            <text x="57" y="186" text-anchor="middle" fill="#555" font-size="9">0</text>
+            <text x="175" y="186" text-anchor="middle" fill="#555" font-size="9">1.0</text>
+            <text x="290" y="186" text-anchor="middle" fill="#555" font-size="9">2.0</text>
+            <text x="405" y="186" text-anchor="middle" fill="#555" font-size="9">3.0</text>
+            <text x="50" y="173" text-anchor="end" fill="#555" font-size="9">0</text>
+            <text x="50" y="123" text-anchor="end" fill="#555" font-size="9">0.5</text>
+            <text x="50" y="73" text-anchor="end" fill="#555" font-size="9">1.0</text>
+
+            <!-- J1 trajectory (smooth S-curve from 0 to 0.8 rad) -->
+            <path d="M 60 170  C 100 170 130 80 175 75  C 220 70 250 72 290 72
+                               C 330 72 360 72 405 72 C 440 72 480 72 518 72"
+                  fill="none" stroke="#0057b8" stroke-width="2.5"/>
+            <text x="530" y="68" fill="#0057b8" font-size="10">J1</text>
+
+            <!-- J4 trajectory (moves to -1.0 rad) -->
+            <path d="M 60 170  C 95 170 120 140 175 125 C 230 110 260 100 290 98
+                               C 320 96 360 96 405 96 C 440 96 480 96 518 96"
+                  fill="none" stroke="#e67e22" stroke-width="2"/>
+            <text x="530" y="92" fill="#e67e22" font-size="10">J4</text>
+
+            <!-- J7 small motion -->
+            <path d="M 60 170  C 90 170 130 158 175 150 C 220 142 260 140 290 138
+                               C 330 136 380 136 518 136"
+                  fill="none" stroke="#27ae60" stroke-width="2"/>
+            <text x="530" y="132" fill="#27ae60" font-size="10">J7</text>
+
+            <!-- Waypoint markers on J1 -->
+            <circle cx="175" cy="75" r="4" fill="#0057b8"/>
+            <circle cx="290" cy="72" r="4" fill="#0057b8"/>
+            <circle cx="405" cy="72" r="4" fill="#0057b8"/>
+
+            <!-- Labels -->
+            <text x="290" y="13" text-anchor="middle" fill="#333" font-weight="700" font-size="11">
+              Joint Position Trajectory — "ready" → custom goal
+            </text>
+            <text x="175" y="63" text-anchor="middle" fill="#0057b8" font-size="9">waypoint</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 4.2.</strong> Example time-parameterized joint trajectories for three
+          joints moving from the zero configuration to a target. The smooth S-shaped profiles
+          (generated by TOTG) respect both velocity and acceleration limits. Blue dots mark
+          intermediate waypoints inserted by the planner.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="action">
+      <h2>4.3 The MoveGroup Action Interface</h2>
+      <p>
+        Your Python node communicates with <code>move_group</code> through a ROS&nbsp;2
+        <em>action</em> — a long-running request with streaming feedback. Figure&nbsp;4.3 shows
+        the full message exchange for a joint-space move.
+      </p>
+
+      <!-- Figure 4.3: Action Sequence Diagram -->
+      <figure id="fig4-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 560 280" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="560" height="280" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="seq" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#0057b8"/></marker>
+              <marker id="seq2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/></marker>
+            </defs>
+
+            <!-- Timeline columns -->
+            <text x="130" y="20" text-anchor="middle" fill="#e67e22" font-weight="700">your_node.py</text>
+            <line x1="130" y1="25" x2="130" y2="265" stroke="#e67e22" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+            <text x="430" y="20" text-anchor="middle" fill="#27ae60" font-weight="700">move_group</text>
+            <line x1="430" y1="25" x2="430" y2="265" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+            <!-- Time axis label -->
+            <text x="18" y="150" fill="#aaa" font-size="9" transform="rotate(-90 18 150)">time ↓</text>
+
+            <!-- Messages -->
+            <!-- 1. Send goal -->
+            <line x1="130" y1="50" x2="430" y2="50" stroke="#0057b8" stroke-width="1.8" marker-end="url(#seq)"/>
+            <text x="280" y="44" text-anchor="middle" fill="#0057b8" font-size="10">SendGoal(joint_names, target_q)</text>
+
+            <!-- 2. Goal accepted -->
+            <line x1="430" y1="70" x2="130" y2="70" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#seq2)"/>
+            <text x="280" y="64" text-anchor="middle" fill="#27ae60" font-size="10">GoalAccepted (planning starts)</text>
+
+            <!-- 3. Feedback (repeated) -->
+            <line x1="430" y1="100" x2="130" y2="100" stroke="#27ae60" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#seq2)"/>
+            <text x="280" y="94" text-anchor="middle" fill="#27ae60" font-size="9">Feedback: state="PLANNING"</text>
+
+            <line x1="430" y1="125" x2="130" y2="125" stroke="#27ae60" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#seq2)"/>
+            <text x="280" y="119" text-anchor="middle" fill="#27ae60" font-size="9">Feedback: state="MONITOR" (executing)</text>
+
+            <line x1="430" y1="150" x2="130" y2="150" stroke="#27ae60" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#seq2)"/>
+            <text x="280" y="144" text-anchor="middle" fill="#27ae60" font-size="9">Feedback: state="MONITOR" (executing)</text>
+
+            <!-- dots -->
+            <text x="280" y="168" text-anchor="middle" fill="#aaa" font-size="14">⋯</text>
+
+            <!-- 4. Result -->
+            <line x1="430" y1="195" x2="130" y2="195" stroke="#27ae60" stroke-width="2" marker-end="url(#seq2)"/>
+            <text x="280" y="189" text-anchor="middle" fill="#27ae60" font-weight="700" font-size="10">Result: error_code = SUCCESS</text>
+
+            <!-- 5. Your node checks result -->
+            <rect x="60" y="210" width="140" height="35" rx="4" fill="#fff7e6" stroke="#e67e22" stroke-width="1"/>
+            <text x="130" y="225" text-anchor="middle" fill="#e67e22" font-size="10">check result.error_code</text>
+            <text x="130" y="238" text-anchor="middle" fill="#e67e22" font-size="10">proceed or retry</text>
+
+            <!-- Timeline brackets -->
+            <rect x="470" y="70" width="8" height="125" rx="2" fill="#27ae60" opacity="0.4"/>
+            <text x="483" y="108" fill="#27ae60" font-size="9">executing</text>
+            <text x="483" y="120" fill="#27ae60" font-size="9">(~2–10 s)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 4.3.</strong> The MoveGroup action exchange for a joint-space move.
+          Your node sends a goal; <code>move_group</code> accepts it and begins planning.
+          Periodic feedback messages report the current state (PLANNING → MONITOR).
+          The final Result message carries an error code; SUCCESS means the arm reached
+          the target configuration.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="code">
+      <h2>4.4 Code Examples</h2>
+
+      <h3>4.4.1 Move to a Joint Goal</h3>
+      <div class="code-header">joint_goal_client.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Move the Panda to a named joint configuration via MoveIt 2.
+Requires: simulation (ch03 launch_sim.sh) to be running.
+"""
+
+import rclpy
+from rclpy.node import Node
+from moveit.planning import MoveItPy
+from moveit.core.robot_state import RobotState
+import numpy as np
+
+
+class JointGoalClient(Node):
+    def __init__(self):
+        super().__init__('joint_goal_client')
+        self.moveit = MoveItPy(node_name='joint_goal_moveit')
+        self.arm = self.moveit.get_planning_component('panda_arm')
+        self.get_logger().info('MoveIt 2 initialized.')
+
+    def move_to_joint_config(self, q: list[float], vel_scale: float = 0.3) -> bool:
+        """
+        Plan and execute a move to joint configuration q.
+
+        Args:
+            q:         7-element list of joint angles [rad]
+            vel_scale: max velocity as fraction of joint limit (0.0–1.0)
+
+        Returns:
+            True on success, False on planning or execution failure.
+        """
+        robot_model = self.moveit.get_robot_model()
+        robot_state = RobotState(robot_model)
+        joint_names = [f'panda_joint{i}' for i in range(1, 8)]
+        robot_state.set_joint_group_positions('panda_arm', q)
+
+        self.arm.set_start_state_to_current_state()
+        self.arm.set_goal_state(robot_state=robot_state)
+
+        plan_result = self.arm.plan(
+            single_plan_parameters={'max_velocity_scaling_factor': vel_scale,
+                                    'max_acceleration_scaling_factor': vel_scale}
+        )
+        if not plan_result:
+            self.get_logger().error('Planning failed.')
+            return False
+
+        execute_result = self.moveit.execute(plan_result.trajectory, controllers=[])
+        if not execute_result:
+            self.get_logger().error('Execution failed.')
+            return False
+
+        self.get_logger().info('Motion complete.')
+        return True
+
+    def move_to_ready(self) -> bool:
+        """Move to the Panda 'ready' pose (all joints at comfortable positions)."""
+        q_ready = [0.0, -np.pi/4, 0.0, -3*np.pi/4, 0.0, np.pi/2, np.pi/4]
+        self.get_logger().info('Moving to ready pose...')
+        return self.move_to_joint_config(q_ready, vel_scale=0.2)
+
+
+def main():
+    rclpy.init()
+    client = JointGoalClient()
+    success = client.move_to_ready()
+    print('Success:', success)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>4.4.2 Direct Trajectory Client (bypasses MoveIt&nbsp;2)</h3>
+      <div class="code-header">joint_trajectory_client.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3"""
+Send a JointTrajectory message directly to the JointTrajectoryController
+action server, bypassing MoveIt 2's planner. Use only for simple,
+pre-verified motions — no collision checking is performed.
+"""
+
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from control_msgs.action import FollowJointTrajectory
+from trajectory_msgs.msg import JointTrajectoryPoint
+from builtin_interfaces.msg import Duration
+import numpy as np
+
+
+class DirectTrajectoryClient(Node):
+    def __init__(self):
+        super().__init__('direct_trajectory_client')
+        self._client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            '/panda_arm_controller/follow_joint_trajectory'
+        )
+
+    def send_trajectory(self, waypoints: list[list[float]],
+                        time_from_start_s: list[float]) -> bool:
+        """
+        Send a joint trajectory with explicit waypoints and timestamps.
+
+        Args:
+            waypoints: list of 7-element joint angle vectors
+            time_from_start_s: timestamp (seconds) for each waypoint
+
+        Returns:
+            True on success.
+        """
+        joint_names = [f'panda_joint{i}' for i in range(1, 8)]
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = joint_names
+
+        for q, t in zip(waypoints, time_from_start_s):
+            pt = JointTrajectoryPoint()
+            pt.positions = [float(x) for x in q]
+            secs = int(t)
+            pt.time_from_start = Duration(sec=secs,
+                                          nanosec=int((t - secs) * 1e9))
+            goal.trajectory.points.append(pt)
+
+        self.get_logger().info(
+            f'Sending trajectory with {len(waypoints)} waypoints...'
+        )
+        if not self._client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().error('Action server not available!')
+            return False
+
+        future = self._client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future)
+        goal_handle = future.result()
+
+        if not goal_handle.accepted:
+            self.get_logger().error('Goal rejected.')
+            return False
+
+        result_future = goal_handle.get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        result = result_future.result().result
+
+        self.get_logger().info(
+            f'Trajectory done. Error code: {result.error_code}'
+        )
+        return result.error_code == FollowJointTrajectory.Result.SUCCESSFUL
+
+
+def main():
+    rclpy.init()
+    client = DirectTrajectoryClient()
+
+    # Three-waypoint sweep of joint 1
+    q0 = [0.0] * 7
+    q1 = [0.5, -np.pi/4, 0, -3*np.pi/4, 0, np.pi/2, np.pi/4]
+    q2 = [1.0, -np.pi/4, 0, -3*np.pi/4, 0, np.pi/2, np.pi/4]
+
+    client.send_trajectory(
+        waypoints=[q0, q1, q2],
+        time_from_start_s=[0.0, 2.5, 5.0]
+    )
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>4.4.3 Monitor Joint States</h3>
+      <div class="code-header">monitor_joint_states.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
+Subscribe to /joint_states and print position, velocity, and effort
+for all 7 Panda joints in a formatted table at 10 Hz.
+Press Ctrl+C to stop.
+"""
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+import numpy as np
+
+
+class JointStateMonitor(Node):
+    def __init__(self):
+        super().__init__('joint_state_monitor')
+        self._sub = self.create_subscription(
+            JointState, '/joint_states', self._callback, 10
+        )
+        self._timer = self.create_timer(0.1, self._print_table)
+        self._latest: JointState | None = None
+
+    def _callback(self, msg: JointState):
+        self._latest = msg
+
+    def _print_table(self):
+        if self._latest is None:
+            return
+
+        msg = self._latest
+        # Filter to panda_joint1..7 only (ignore finger joints)
+        panda_idx = [i for i, n in enumerate(msg.name)
+                     if n.startswith('panda_joint') and 'finger' not in n]
+
+        print('\033[2J\033[H', end='')  # clear terminal
+        print(f'{'Joint':<16} {'Pos (rad)':>12} {'Vel (rad/s)':>12} {'Effort (Nm)':>12}')
+        print('-' * 56)
+        for i in panda_idx:
+            name = msg.name[i]
+            pos  = msg.position[i] if msg.position else 0.0
+            vel  = msg.velocity[i] if msg.velocity else 0.0
+            eff  = msg.effort[i]   if msg.effort   else 0.0
+            print(f'{name:<16} {pos:>12.4f} {vel:>12.4f} {eff:>12.3f}')
+
+
+def main():
+    rclpy.init()
+    rclpy.spin(JointStateMonitor())
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <section id="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>Run <code>joint_goal_client.py</code> in simulation. While the arm is moving, open a
+            second terminal and run <code>monitor_joint_states.py</code>. Observe which joints
+            are changing fastest. Do they correlate with the joint that has the most influence
+            according to your Jacobian results from Chapter&nbsp;2?</li>
+        <li>Modify <code>joint_goal_client.py</code> to move the arm to a configuration with
+            <code>q[0] = 1.5</code> (joint&nbsp;1 rotated ~86°). Does the planner succeed?
+            What happens if you try <code>q[0] = 2.9</code> (near the joint limit of 2.9&nbsp;rad)?</li>
+        <li>Change <code>vel_scale</code> from 0.3 to 0.05. How does the trajectory duration change?
+            How does it change the smoothness of motion in RViz?</li>
+      </ol>
+    </section>
+
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 4</h3>
+      <dl>
+        <dt>C-space</dt><dd>Configuration space; the 7D space of all joint angle vectors.</dd>
+        <dt>RRTConnect</dt><dd>A bidirectional sampling-based planner that grows two trees from start and goal.</dd>
+        <dt>TOTG</dt><dd>Time-Optimal Trajectory Generation; assigns timestamps to raw planner waypoints.</dd>
+        <dt>JointTrajectoryController</dt><dd>ros2_control controller that tracks a time-parameterized joint trajectory using PID.</dd>
+        <dt>Velocity scaling</dt><dd>A multiplier (0–1) applied to joint velocity limits to slow planned motions.</dd>
+      </dl>
+    </aside>
+
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">J. Kuffner and S. LaValle, "RRT-Connect: An Efficient Approach to Single-Query Path Planning," in <em>Proc. IEEE ICRA</em>, San Francisco, CA, Apr. 2000, pp. 995–1001.</li>
+        <li id="ref2">D. Lertkultanon and Q.-C. Pham, "A Single-Step Approach to Computing a Nearly-Optimal Time-Optimal Trajectory," <em>IEEE RA-L</em>, vol. 1, no. 2, pp. 663–670, 2016.</li>
+        <li id="ref3">D. Coleman, I. Sucan, S. Chitta, and N. Correll, "Reducing the Barrier to Entry of Complex Robotic Software: a MoveIt! Case Study," <em>JOSER</em>, vol. 5, no. 1, 2014.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <a href="ch03.html">&larr; Chapter 3: Simulation</a>
+    <span class="page-info">Chapter 4 of 10</span>
+    <a href="ch05.html">Chapter 5: Cartesian Control &rarr;</a>
+  </footer>
+</div>
+<script>window.MathJax={tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

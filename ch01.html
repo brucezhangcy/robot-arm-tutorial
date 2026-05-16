@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1 · Foundations &amp; Toolchain — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- highlight.js for code syntax -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html" class="active">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+      </ul>
+
+      <!-- In-page TOC -->
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#panda-hardware">1.1 The Franka Panda</a></li>
+          <li><a href="#ros2-overview">1.2 ROS&nbsp;2 Overview</a></li>
+          <li><a href="#software-stack">1.3 The Software Stack</a></li>
+          <li><a href="#installation">1.4 Installation</a></li>
+          <li><a href="#verify">1.5 Verification</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 1</span>
+    <h1>Foundations &amp; Toolchain</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      This chapter introduces the Franka Emika Panda robot arm and the software ecosystem used throughout
+      the tutorial. By the end you will understand what each hardware component does, how ROS&nbsp;2
+      organizes robot software, and how the layers from physical motors to your Python code fit together.
+      You will also verify that your development environment is correctly installed.
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         §1.1  The Franka Emika Panda
+         ════════════════════════════════════════════════════ -->
+    <section id="panda-hardware">
+      <h2>1.1 The Franka Emika Panda</h2>
+
+      <p>
+        The <strong>Franka Emika Panda</strong> is a 7-degree-of-freedom (7-DOF) <em>collaborative robot arm</em>
+        designed for research and industrial tasks that require close interaction with people
+        <a class="cite" href="#ref1">[1]</a>.
+        It is manufactured by Franka Robotics GmbH (formerly Franka Emika GmbH) and is widely used in
+        university robotics labs worldwide.
+      </p>
+
+      <p>
+        What sets the Panda apart from earlier industrial arms is its <strong>joint-level torque sensing</strong>.
+        Every one of its seven joints contains a high-resolution torque sensor that measures the force
+        being applied at that joint 1,000 times per second. This allows the robot to detect unexpected
+        contact, respond compliantly to human touch, and execute delicate manipulation tasks that would
+        be impossible with a rigid position-controlled arm.
+      </p>
+
+      <h3>1.1.1 Physical Anatomy</h3>
+      <p>
+        The arm consists of seven <em>revolute joints</em> (joints that rotate around a single axis) connected
+        by rigid aluminum <em>links</em>. At the very tip of the arm is the
+        <strong>end-effector</strong> (abbreviated <strong>EEF</strong>) — the mounting flange where
+        a tool such as a gripper, camera, or suction cup attaches to interact with objects in the world.
+        The arm's entire job is to move and orient that flange precisely.
+        Figure&nbsp;1.1 shows the full anatomy.
+      </p>
+
+      <!-- ── Figure 1.1: Panda Anatomy ── -->
+      <figure id="fig1-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 620 520" width="580" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="12">
+
+            <!-- Background -->
+            <rect width="620" height="520" fill="#fafbfc" rx="4"/>
+
+            <!-- ── Base ── -->
+            <rect x="240" y="470" width="140" height="28" rx="4" fill="#c8d0dc" stroke="#8896aa" stroke-width="1.5"/>
+            <text x="310" y="488" text-anchor="middle" font-size="11" fill="#555">Base / Mounting Flange</text>
+
+            <!-- ── Link 1 (vertical riser) ── -->
+            <rect x="278" y="390" width="64" height="82" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+
+            <!-- ── Joint 1 circle ── -->
+            <circle cx="310" cy="390" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="310" y="394" text-anchor="middle" fill="white" font-weight="700" font-size="12">J1</text>
+
+            <!-- ── Link 2 (elbow up) ── -->
+            <rect x="278" y="305" width="64" height="88" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+
+            <!-- ── Joint 2 ── -->
+            <circle cx="310" cy="305" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="310" y="309" text-anchor="middle" fill="white" font-weight="700" font-size="12">J2</text>
+
+            <!-- ── Link 3 (angled forearm) ── -->
+            <line x1="310" y1="287" x2="360" y2="225" stroke="#8896aa" stroke-width="2"/>
+            <rect x="278" y="223" width="64" height="66" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"
+                  transform="rotate(-30 310 256)"/>
+
+            <!-- ── Joint 3 ── -->
+            <circle cx="310" cy="225" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="310" y="229" text-anchor="middle" fill="white" font-weight="700" font-size="12">J3</text>
+
+            <!-- ── Link 4 ── -->
+            <rect x="278" y="148" width="64" height="80" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+
+            <!-- ── Joint 4 ── -->
+            <circle cx="310" cy="148" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="310" y="152" text-anchor="middle" fill="white" font-weight="700" font-size="12">J4</text>
+
+            <!-- ── Link 5 (wrist section) ── -->
+            <rect x="278" y="90" width="64" height="60" rx="6" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+
+            <!-- ── Joint 5 ── -->
+            <circle cx="310" cy="90" r="16" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
+            <text x="310" y="94" text-anchor="middle" fill="white" font-weight="700" font-size="11">J5</text>
+
+            <!-- ── Link 6 ── -->
+            <rect x="288" y="55" width="44" height="37" rx="5" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+
+            <!-- ── Joint 6 ── -->
+            <circle cx="310" cy="55" r="14" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
+            <text x="310" y="59" text-anchor="middle" fill="white" font-weight="700" font-size="11">J6</text>
+
+            <!-- ── Link 7 + EEF ── -->
+            <rect x="295" y="28" width="30" height="29" rx="4" fill="#a8c8e8" stroke="#5588cc" stroke-width="1.5"/>
+
+            <!-- ── Joint 7 ── -->
+            <circle cx="310" cy="28" r="12" fill="#3498db" stroke="#2471a3" stroke-width="2"/>
+            <text x="310" y="32" text-anchor="middle" fill="white" font-weight="700" font-size="10">J7</text>
+
+            <!-- ── EEF / Flange ── -->
+            <rect x="292" y="8" width="36" height="14" rx="3" fill="#f39c12" stroke="#d68910" stroke-width="1.5"/>
+            <text x="310" y="19" text-anchor="middle" fill="white" font-weight="700" font-size="9">EEF</text>
+
+            <!-- ══ ANNOTATION LINES & LABELS (right side) ══ -->
+
+            <!-- EEF label -->
+            <line x1="328" y1="15" x2="405" y2="22" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="408" y="26" fill="#333" font-size="11">End-Effector Flange</text>
+            <text x="408" y="39" fill="#888" font-size="10">Gripper / tool mounts here</text>
+
+            <!-- J7 label -->
+            <line x1="322" y1="28" x2="405" y2="58" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="408" y="62" fill="#333" font-size="11">Joints 5 – 7: Wrist</text>
+            <text x="408" y="75" fill="#888" font-size="10">Fine orientation control</text>
+
+            <!-- Torque sensor callout -->
+            <line x1="328" y1="90" x2="405" y2="105" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="4,3"/>
+            <text x="408" y="109" fill="#c0392b" font-size="11" font-weight="600">Torque Sensor</text>
+            <text x="408" y="122" fill="#888" font-size="10">1 kHz, at every joint</text>
+            <text x="408" y="134" fill="#888" font-size="10">Enables impedance control</text>
+
+            <!-- J4 label -->
+            <line x1="328" y1="148" x2="405" y2="170" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="408" y="174" fill="#333" font-size="11">Joints 1 – 4: Arm</text>
+            <text x="408" y="187" fill="#888" font-size="10">Gross positioning of EEF</text>
+
+            <!-- Left side annotations -->
+
+            <!-- J1 / revolute -->
+            <line x1="292" y1="390" x2="170" y2="382" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="50" y="379" fill="#333" font-size="11">Revolute Joint</text>
+            <text x="50" y="392" fill="#888" font-size="10">Rotates about a single axis</text>
+
+            <!-- Link -->
+            <line x1="282" y1="345" x2="170" y2="330" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="50" y="327" fill="#333" font-size="11">Rigid Link</text>
+            <text x="50" y="340" fill="#888" font-size="10">Aluminum structural member</text>
+
+            <!-- DOF count -->
+            <text x="50" y="455" fill="#0057b8" font-weight="700" font-size="13">7 DOF total</text>
+            <text x="50" y="470" fill="#555" font-size="11">Joints 1–7, all revolute</text>
+            <text x="50" y="484" fill="#555" font-size="11">Max reach: 855 mm</text>
+            <text x="50" y="497" fill="#555" font-size="11">Payload: 3 kg</text>
+
+            <!-- title -->
+            <text x="310" y="516" text-anchor="middle" fill="#aaa" font-size="10">
+              Franka Emika Panda — schematic (not to scale)
+            </text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 1.1.</strong> Schematic anatomy of the Franka Emika Panda robot arm.
+          Seven revolute joints (J1–J7) are connected by rigid aluminum links. Each joint contains a
+          high-resolution torque sensor sampled at 1&nbsp;kHz. Joints 1–4 primarily position the
+          end-effector in space; joints 5–7 (the wrist) control its orientation.
+        </figcaption>
+      </figure>
+
+      <h3>1.1.2 Key Specifications</h3>
+      <p>
+        The Panda's torque sensors, combined with its 7th redundant degree of freedom, are what enable
+        the advanced control modes covered later in this tutorial (Chapter&nbsp;7). Table&nbsp;1.1 summarizes
+        the key specifications <a class="cite" href="#ref2">[2]</a>.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Property</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Degrees of Freedom</td><td>7 (all revolute)</td></tr>
+          <tr><td>Maximum Reach</td><td>855 mm</td></tr>
+          <tr><td>Payload <small>(maximum mass of the attached tool + object)</small></td><td>3 kg</td></tr>
+          <tr><td>Repeatability <small>(how consistently it returns to the exact same point)</small></td><td>±0.1 mm</td></tr>
+          <tr><td>Joint Torque Sensing</td><td>All 7 joints, 1 kHz sampling</td></tr>
+          <tr><td>Communication</td><td>1&nbsp;Gbps Ethernet (Franka Control Interface)</td></tr>
+          <tr><td>Control frequency</td><td>1 kHz (real-time kernel required)</td></tr>
+          <tr><td>Weight</td><td>18 kg</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-note">
+        <strong>What is a DOF?</strong> A <em>degree of freedom</em> (DOF) is an independent direction
+        of motion. A revolute joint adds one rotational DOF. A free-flying object in 3D space has 6 DOF
+        (3 translational + 3 rotational). The Panda has <em>7</em> DOF — one more than the minimum needed
+        to reach any pose in its workspace — making it <em>kinematically redundant</em>. Chapter&nbsp;2
+        explains how this redundancy is exploited.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         §1.2  ROS 2 Overview
+         ════════════════════════════════════════════════════ -->
+    <section id="ros2-overview">
+      <h2>1.2 ROS&nbsp;2 Overview</h2>
+
+      <p>
+        <strong>ROS&nbsp;2</strong> (Robot Operating System 2) is an open-source middleware framework for
+        building robot software <a class="cite" href="#ref3">[3]</a>. Despite the name, it is not an
+        operating system — it runs on top of Linux (or Windows/macOS). Think of it as a standardized
+        <em>communication bus</em> that lets separate programs — called <strong>nodes</strong> — talk to
+        each other as if they were one integrated application.
+      </p>
+
+      <p>
+        Without ROS&nbsp;2, you would need to write custom networking code every time two parts of your
+        robot software needed to share data. With ROS&nbsp;2, a sensor driver, a motion planner, a
+        visualizer, and your control code can all run as independent processes and exchange data through
+        a well-defined API.
+      </p>
+
+      <h3>1.2.1 Core Concepts</h3>
+      <p>ROS&nbsp;2 organizes communication into four primitives:</p>
+      <ul>
+        <li>
+          <strong>Node</strong> — an independent process (usually one Python or C++ program) that does one job:
+          read a camera, plan a trajectory, publish a control command, etc.
+        </li>
+        <li>
+          <strong>Topic</strong> — a named data stream. Nodes <em>publish</em> messages to a topic;
+          other nodes <em>subscribe</em> to receive them. Topics are one-directional and continuous
+          (e.g., <code>/joint_states</code> publishes the arm's current position at 1&nbsp;kHz).
+        </li>
+        <li>
+          <strong>Service</strong> — a request–response interaction. One node calls a service with a
+          request; the server node responds once (e.g., "add this collision object to the planning scene").
+        </li>
+        <li>
+          <strong>Action</strong> — like a service, but for long-running tasks. An action sends a goal,
+          streams periodic feedback while executing, and returns a final result. MoveIt&nbsp;2 exposes
+          its motion planning as an action (e.g., "move to this joint configuration").
+        </li>
+      </ul>
+
+      <h3>1.2.2 The ROS&nbsp;2 Node Graph</h3>
+      <p>
+        When the full Panda simulation is running, several nodes are active simultaneously. Figure&nbsp;1.2
+        shows the major nodes and how they communicate for our tutorial setup.
+      </p>
+
+      <!-- ── Figure 1.2: ROS 2 Node Graph ── -->
+      <figure id="fig1-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 700 400" width="660" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="12">
+
+            <rect width="700" height="400" fill="#fafbfc" rx="4"/>
+
+            <!-- ── Helper: node box macro ── -->
+            <!-- franka_ros2 / hardware interface -->
+            <rect x="20" y="160" width="145" height="52" rx="6" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="93" y="181" text-anchor="middle" fill="white" font-weight="700" font-size="12">franka_ros2</text>
+            <text x="93" y="197" text-anchor="middle" fill="#b8d4f5" font-size="10">Hardware Interface</text>
+            <text x="93" y="208" text-anchor="middle" fill="#b8d4f5" font-size="10">(real) / Gazebo (sim)</text>
+
+            <!-- robot_state_publisher -->
+            <rect x="20" y="60" width="145" height="44" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="93" y="78" text-anchor="middle" fill="white" font-weight="700" font-size="12">robot_state</text>
+            <text x="93" y="93" text-anchor="middle" fill="white" font-weight="700" font-size="12">_publisher</text>
+
+            <!-- controller_manager -->
+            <rect x="20" y="280" width="145" height="44" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
+            <text x="93" y="298" text-anchor="middle" fill="white" font-weight="700" font-size="12">controller</text>
+            <text x="93" y="312" text-anchor="middle" fill="white" font-weight="700" font-size="12">_manager</text>
+
+            <!-- move_group -->
+            <rect x="275" y="150" width="150" height="52" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="350" y="170" text-anchor="middle" fill="white" font-weight="700" font-size="12">move_group</text>
+            <text x="350" y="186" text-anchor="middle" fill="#a9dfbf" font-size="10">MoveIt 2 planning server</text>
+            <text x="350" y="198" text-anchor="middle" fill="#a9dfbf" font-size="10">OMPL, collision checks</text>
+
+            <!-- rviz2 -->
+            <rect x="275" y="50" width="150" height="44" rx="6" fill="#8e44ad" stroke="#6c3483" stroke-width="1.5"/>
+            <text x="350" y="71" text-anchor="middle" fill="white" font-weight="700" font-size="12">rviz2</text>
+            <text x="350" y="86" text-anchor="middle" fill="#d7bde2" font-size="10">3D visualization</text>
+
+            <!-- user_node -->
+            <rect x="530" y="150" width="145" height="52" rx="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="603" y="170" text-anchor="middle" fill="white" font-weight="700" font-size="12">your_node.py</text>
+            <text x="603" y="186" text-anchor="middle" fill="#fdebd0" font-size="10">User Python code</text>
+            <text x="603" y="198" text-anchor="middle" fill="#fdebd0" font-size="10">MoveGroup client</text>
+
+            <!-- Gazebo (sim only) -->
+            <rect x="275" y="280" width="150" height="44" rx="6" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.5"/>
+            <text x="350" y="298" text-anchor="middle" fill="white" font-weight="700" font-size="12">gazebo</text>
+            <text x="350" y="312" text-anchor="middle" fill="#ecf0f1" font-size="10">Physics simulation</text>
+
+            <!-- ══ ARROWS / TOPICS ══ -->
+
+            <!-- franka_ros2 → robot_state_publisher : /joint_states -->
+            <line x1="93" y1="160" x2="93" y2="104" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="97" y="135" fill="#0057b8" font-size="9">/joint_states</text>
+
+            <!-- robot_state_pub → rviz2 : /tf -->
+            <line x1="165" y1="82" x2="275" y2="72" stroke="#2980b9" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="200" y="68" fill="#2980b9" font-size="9">/tf, /tf_static</text>
+
+            <!-- franka_ros2 → move_group : /joint_states -->
+            <line x1="165" y1="176" x2="275" y2="176" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="188" y="170" fill="#0057b8" font-size="9">/joint_states</text>
+
+            <!-- move_group → rviz2 : planning scene -->
+            <line x1="350" y1="150" x2="350" y2="94" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="354" y="125" fill="#27ae60" font-size="9">/monitored</text>
+            <text x="354" y="136" fill="#27ae60" font-size="9">_planning_scene</text>
+
+            <!-- user_node → move_group : MoveGroup action -->
+            <line x1="530" y1="176" x2="425" y2="176" stroke="#e67e22" stroke-width="2" marker-end="url(#arr)"/>
+            <text x="444" y="168" fill="#e67e22" font-size="9">MoveGroup</text>
+            <text x="444" y="179" fill="#e67e22" font-size="9">action (goal)</text>
+
+            <!-- move_group → user_node : result/feedback -->
+            <line x1="425" y1="192" x2="530" y2="192" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr2)"/>
+            <text x="447" y="207" fill="#27ae60" font-size="9">result / feedback</text>
+
+            <!-- move_group → controller_manager : /joint_trajectory -->
+            <line x1="300" y1="202" x2="165" y2="285" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="170" y="250" fill="#27ae60" font-size="9">/joint_trajectory</text>
+            <text x="170" y="261" fill="#27ae60" font-size="9">_controller/</text>
+            <text x="170" y="272" fill="#27ae60" font-size="9">follow_joint_traj</text>
+
+            <!-- controller_manager → franka_ros2 -->
+            <line x1="93" y1="280" x2="93" y2="212" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="96" y="250" fill="#1a5276" font-size="9">hw_commands</text>
+
+            <!-- controller_manager → gazebo -->
+            <line x1="165" y1="302" x2="275" y2="302" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="190" y="296" fill="#1a5276" font-size="9">/cmd (sim)</text>
+
+            <!-- defs for arrowheads -->
+            <defs>
+              <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
+              </marker>
+              <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#27ae60"/>
+              </marker>
+            </defs>
+
+            <!-- legend -->
+            <rect x="530" y="270" width="150" height="105" rx="4" fill="#f0f0f0" stroke="#ccc"/>
+            <text x="605" y="286" text-anchor="middle" font-weight="700" fill="#333" font-size="11">Legend</text>
+            <line x1="540" y1="300" x2="570" y2="300" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="575" y="304" fill="#333" font-size="10">Topic / Action</text>
+            <line x1="540" y1="318" x2="570" y2="318" stroke="#555" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+            <text x="575" y="322" fill="#333" font-size="10">Response</text>
+            <rect x="540" y="330" width="18" height="12" rx="2" fill="#0057b8"/>
+            <text x="563" y="341" fill="#333" font-size="10">Hardware layer</text>
+            <rect x="540" y="348" width="18" height="12" rx="2" fill="#27ae60"/>
+            <text x="563" y="359" fill="#333" font-size="10">Planning layer</text>
+            <rect x="540" y="366" width="18" height="12" rx="2" fill="#e67e22"/>
+            <text x="563" y="377" fill="#333" font-size="10">User code</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 1.2.</strong> The ROS&nbsp;2 node graph for the Panda tutorial setup.
+          Colored boxes are independent processes. Arrows are topics, services, or actions with their
+          names labeled. Your Python code (<code>your_node.py</code>) communicates exclusively with
+          <code>move_group</code> via the MoveGroup action interface — it never directly commands
+          motors or writes to hardware topics.
+        </figcaption>
+      </figure>
+
+      <div class="callout callout-tip">
+        <strong>Key insight:</strong> You never write code that directly drives the robot's motors.
+        Your Python node sends a high-level goal ("move to this pose") to <code>move_group</code>,
+        which plans a safe trajectory, then commands the hardware through the controller manager.
+        This layered architecture is what makes the same code work in both simulation and on
+        real hardware.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         §1.3  The Software Stack
+         ════════════════════════════════════════════════════ -->
+    <section id="software-stack">
+      <h2>1.3 The Full Software Stack</h2>
+
+      <p>
+        Between your Python code and the physical motors are several layers of software. Each layer
+        provides an abstraction: you write a goal in terms of "meters and radians," and the layers
+        below translate that into motor currents at 1&nbsp;kHz. Figure&nbsp;1.3 shows these layers
+        from top to bottom.
+      </p>
+
+      <!-- ── Figure 1.3: Software Stack Layers ── -->
+      <figure id="fig1-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 380" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="12">
+
+            <rect width="580" height="380" fill="#fafbfc" rx="4"/>
+
+            <!-- Layer definitions: y, height, fill, label, sublabel, desc -->
+
+            <!-- Layer 7: User Python Code -->
+            <rect x="60" y="20" width="360" height="46" rx="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="240" y="40" text-anchor="middle" fill="white" font-weight="700" font-size="14">Your Python Code</text>
+            <text x="240" y="56" text-anchor="middle" fill="#fdebd0" font-size="11">joint_goal_client.py, pick_and_place.py …</text>
+            <text x="452" y="36" fill="#e67e22" font-size="10" font-weight="600">▶ What you write</text>
+            <text x="452" y="50" fill="#888" font-size="10">MoveGroupInterface API calls</text>
+
+            <!-- Arrow -->
+            <line x1="240" y1="66" x2="240" y2="80" stroke="#aaa" stroke-width="1.5" marker-end="url(#da)"/>
+
+            <!-- Layer 6: MoveIt 2 -->
+            <rect x="60" y="80" width="360" height="46" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="240" y="100" text-anchor="middle" fill="white" font-weight="700" font-size="14">MoveIt&nbsp;2</text>
+            <text x="240" y="116" text-anchor="middle" fill="#a9dfbf" font-size="11">Motion planning · Collision checking · IK solving</text>
+            <text x="452" y="96" fill="#27ae60" font-size="10" font-weight="600">▶ Planning layer</text>
+            <text x="452" y="110" fill="#888" font-size="10">OMPL, FCL, KDL/TRAC-IK</text>
+
+            <line x1="240" y1="126" x2="240" y2="140" stroke="#aaa" stroke-width="1.5" marker-end="url(#da)"/>
+
+            <!-- Layer 5: ROS 2 Middleware -->
+            <rect x="60" y="140" width="360" height="46" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="240" y="160" text-anchor="middle" fill="white" font-weight="700" font-size="14">ROS&nbsp;2 Middleware (DDS)</text>
+            <text x="240" y="176" text-anchor="middle" fill="#aed6f1" font-size="11">Topics · Services · Actions · TF2 transforms</text>
+            <text x="452" y="156" fill="#2980b9" font-size="10" font-weight="600">▶ Communication</text>
+            <text x="452" y="170" fill="#888" font-size="10">Fast DDS, Cyclone DDS</text>
+
+            <line x1="240" y1="186" x2="240" y2="200" stroke="#aaa" stroke-width="1.5" marker-end="url(#da)"/>
+
+            <!-- Layer 4: ros2_control / controller_manager -->
+            <rect x="60" y="200" width="360" height="46" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
+            <text x="240" y="220" text-anchor="middle" fill="white" font-weight="700" font-size="14">ros2_control / controller_manager</text>
+            <text x="240" y="236" text-anchor="middle" fill="#85c1e9" font-size="11">JointTrajectoryController · VelocityController · ImpedanceController</text>
+            <text x="452" y="216" fill="#1a5276" font-size="10" font-weight="600">▶ Control layer</text>
+            <text x="452" y="230" fill="#888" font-size="10">Runs at up to 1 kHz</text>
+
+            <line x1="240" y1="246" x2="240" y2="260" stroke="#aaa" stroke-width="1.5" marker-end="url(#da)"/>
+
+            <!-- Layer 3: franka_ros2 / hardware interface -->
+            <rect x="60" y="260" width="360" height="46" rx="6" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="240" y="280" text-anchor="middle" fill="white" font-weight="700" font-size="14">franka_ros2 Hardware Interface</text>
+            <text x="240" y="296" text-anchor="middle" fill="#b8d4f5" font-size="11">Reads joint states · Sends torque commands via FCI</text>
+            <text x="452" y="276" fill="#0057b8" font-size="10" font-weight="600">▶ Hardware bridge</text>
+            <text x="452" y="290" fill="#888" font-size="10">libfranka under the hood</text>
+
+            <line x1="240" y1="306" x2="240" y2="320" stroke="#aaa" stroke-width="1.5" marker-end="url(#da)"/>
+
+            <!-- Layer 2: libfranka / FCI -->
+            <rect x="60" y="320" width="360" height="40" rx="6" fill="#c0392b" stroke="#922b21" stroke-width="1.5"/>
+            <text x="240" y="338" text-anchor="middle" fill="white" font-weight="700" font-size="14">libfranka · Franka Control Interface (FCI)</text>
+            <text x="240" y="354" text-anchor="middle" fill="#fadbd8" font-size="10">1 Gbps Ethernet · 1 kHz real-time loop · Protective reflexes</text>
+            <text x="452" y="338" fill="#c0392b" font-size="10" font-weight="600">▶ Real-time C++ API</text>
+
+            <!-- defs -->
+            <defs>
+              <marker id="da" markerWidth="8" markerHeight="8" refX="4" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L7,3 z" fill="#aaa"/>
+              </marker>
+            </defs>
+
+            <!-- Physical robot label -->
+            <rect x="140" y="366" width="200" height="10" rx="2" fill="#333"/>
+            <text x="240" y="376" text-anchor="middle" fill="#333" font-size="10">▼  Physical Motors &amp; Sensors  ▼</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 1.3.</strong> The full software stack from user Python code (top) to
+          physical hardware (bottom). Each layer presents a higher-level abstraction to the layer
+          above it. The same user code runs in simulation by replacing the <code>franka_ros2</code>
+          hardware interface with a Gazebo plugin that simulates motor dynamics.
+        </figcaption>
+      </figure>
+
+      <h3>Layer Descriptions</h3>
+      <dl>
+        <dt><strong>libfranka / FCI</strong></dt>
+        <dd>
+          Franka's official C++ library for real-time robot control <a class="cite" href="#ref4">[4]</a>.
+          It communicates with the robot over a 1&nbsp;Gbps Ethernet link at 1&nbsp;kHz and implements
+          the robot's built-in safety reflexes (automatic stops when unexpected forces are detected).
+          You almost never call this directly; <code>franka_ros2</code> wraps it.
+        </dd>
+        <dt><strong>franka_ros2 Hardware Interface</strong></dt>
+        <dd>
+          A ROS&nbsp;2 package that translates between the <code>ros2_control</code> API and
+          <code>libfranka</code>. It reads joint positions, velocities, and torques from the robot and
+          writes commanded torques back. In simulation, a Gazebo plugin plays this role.
+        </dd>
+        <dt><strong>ros2_control / controller_manager</strong></dt>
+        <dd>
+          Manages a set of <em>controllers</em> — algorithms that take a trajectory goal and produce
+          motor commands at the required frequency. We will use the
+          <code>JointTrajectoryController</code> (Chapters 4–5), <code>JointVelocityController</code>
+          (Chapter 6), and the impedance controller (Chapter 7).
+        </dd>
+        <dt><strong>ROS&nbsp;2 Middleware</strong></dt>
+        <dd>
+          Built on DDS (Data Distribution Service), a real-time publish–subscribe standard
+          <a class="cite" href="#ref3">[3]</a>. Handles discovery, serialization, and delivery of
+          messages between all nodes on the network.
+        </dd>
+        <dt><strong>MoveIt&nbsp;2</strong></dt>
+        <dd>
+          The primary motion planning framework in ROS&nbsp;2 <a class="cite" href="#ref5">[5]</a>.
+          Given a goal <em>pose</em> (the desired position and orientation of the end-effector) or
+          joint configuration, MoveIt&nbsp;2 runs a sampling-based planner
+          (Chapter&nbsp;8), checks the trajectory for collisions, and sends it to the controller manager.
+        </dd>
+        <dt><strong>Your Python Code</strong></dt>
+        <dd>
+          Calls the <code>MoveGroupInterface</code> Python API to set goals, trigger planning, and execute
+          trajectories. This is what all of the code examples in this tutorial are written in.
+        </dd>
+      </dl>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         §1.4  Installation
+         ════════════════════════════════════════════════════ -->
+    <section id="installation">
+      <h2>1.4 Installation</h2>
+
+      <p>
+        All software in this tutorial runs on <strong>Ubuntu 22.04 LTS</strong> with
+        <strong>ROS&nbsp;2 Humble</strong>. Follow these steps in order. Each command is idempotent —
+        safe to run more than once.
+      </p>
+
+      <div class="callout callout-warning">
+        <strong>Warning:</strong> Do not install ROS&nbsp;2 inside a conda or virtual environment.
+        ROS&nbsp;2 modifies system Python paths in ways that conflict with environment managers.
+        Use the system Python provided by ROS&nbsp;2.
+      </div>
+
+      <h3>Step 1 — Install ROS&nbsp;2 Humble</h3>
+      <div class="code-header">bash</div>
+<pre><code class="language-bash"># Add ROS 2 apt repository
+sudo apt install software-properties-common curl -y
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) \
+    signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+    http://packages.ros.org/ros2/ubuntu \
+    $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
+    | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+# Install ROS 2 Humble desktop (includes RViz, demos)
+sudo apt update
+sudo apt install ros-humble-desktop python3-colcon-common-extensions -y
+
+# Source ROS 2 in every new terminal
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+source ~/.bashrc</code></pre>
+
+      <h3>Step 2 — Install MoveIt&nbsp;2 and Franka packages</h3>
+      <div class="code-header">bash</div>
+<pre><code class="language-bash">sudo apt install \
+    ros-humble-moveit \
+    ros-humble-franka-description \
+    ros-humble-franka-msgs \
+    ros-humble-gazebo-ros2-control \
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    python3-rosdep -y
+
+# Initialize rosdep (skip if already done)
+sudo rosdep init 2>/dev/null || true
+rosdep update</code></pre>
+
+      <h3>Step 3 — Build franka_ros2 from source</h3>
+      <div class="code-header">bash</div>
+<pre><code class="language-bash">mkdir -p ~/panda_ws/src
+cd ~/panda_ws/src
+
+# Clone franka_ros2 (Humble branch)
+git clone https://github.com/frankaemika/franka_ros2.git --branch humble
+
+cd ~/panda_ws
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+# Source the workspace
+echo "source ~/panda_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc</code></pre>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         §1.5  Verification
+         ════════════════════════════════════════════════════ -->
+    <section id="verify">
+      <h2>1.5 Verifying Your Installation</h2>
+
+      <p>
+        Run the script below to confirm that every required package is installed and importable.
+        A passing run prints <code>✓</code> for each check; a failing run prints the exact
+        missing package so you can fix it.
+      </p>
+
+      <div class="code-header">verify_install.sh</div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+# Verify all required packages for the Panda tutorial are installed.
+set -euo pipefail
+
+PASS="✓"
+FAIL="✗"
+errors=0
+
+check_pkg() {
+    local pkg="$1"
+    if dpkg -s "$pkg" &>/dev/null; then
+        echo "$PASS  $pkg"
+    else
+        echo "$FAIL  $pkg  (not installed)"
+        errors=$((errors + 1))
+    fi
+}
+
+check_python() {
+    local mod="$1"
+    if python3 -c "import $mod" &>/dev/null; then
+        echo "$PASS  python3.$mod"
+    else
+        echo "$FAIL  python3.$mod  (import failed)"
+        errors=$((errors + 1))
+    fi
+}
+
+check_ros_pkg() {
+    local pkg="$1"
+    if ros2 pkg list 2>/dev/null | grep -q "^${pkg}$"; then
+        echo "$PASS  ros2 pkg: $pkg"
+    else
+        echo "$FAIL  ros2 pkg: $pkg  (not found)"
+        errors=$((errors + 1))
+    fi
+}
+
+echo "=== System packages ==="
+check_pkg ros-humble-desktop
+check_pkg ros-humble-moveit
+check_pkg ros-humble-ros2-control
+check_pkg ros-humble-ros2-controllers
+
+echo ""
+echo "=== Python modules ==="
+check_python rclpy
+check_python moveit
+check_python numpy
+
+echo ""
+echo "=== ROS 2 packages ==="
+check_ros_pkg franka_description
+check_ros_pkg franka_msgs
+check_ros_pkg moveit_ros_planning_interface
+
+echo ""
+if [ $errors -eq 0 ]; then
+    echo "All checks passed. Your environment is ready."
+else
+    echo "$errors check(s) failed. See above for details."
+    exit 1
+fi</code></pre>
+
+      <p>
+        Next, confirm that ROS&nbsp;2 itself is working by running a minimal node:
+      </p>
+
+      <div class="code-header">minimal_ros2_node.py</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""Minimal ROS 2 node — confirms rclpy is installed and DDS communication works."""
+
+import rclpy
+from rclpy.node import Node
+
+
+class MinimalNode(Node):
+    def __init__(self):
+        super().__init__('minimal_node')
+        self.get_logger().info('Node is running. ROS 2 environment is correctly set up.')
+        # Publish one message then exit
+        timer = self.create_timer(0.1, self._on_timer)
+        self._timer = timer
+
+    def _on_timer(self):
+        self.get_logger().info('Timer fired — spinning correctly.')
+        self._timer.cancel()
+        rclpy.shutdown()
+
+
+def main():
+    rclpy.init()
+    node = MinimalNode()
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <p>Run it with:</p>
+      <div class="code-header">bash</div>
+<pre><code class="language-bash">python3 minimal_ros2_node.py</code></pre>
+
+      <p>
+        You should see two log lines and the process should exit cleanly. If you see
+        <code>rclpy not found</code>, your ROS&nbsp;2 environment is not sourced — run
+        <code>source /opt/ros/humble/setup.bash</code> first.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         §Exercises
+         ════════════════════════════════════════════════════ -->
+    <section id="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Run <code>ros2 topic list</code> while the Panda URDF is loaded in RViz. How many topics
+          are published? Identify the topic that carries joint positions and its message type.
+          (<em>Hint:</em> <code>ros2 topic info /joint_states</code>)
+        </li>
+        <li>
+          The Panda has 7 DOF, but a rigid body in 3D space requires only 6 DOF (3 translation +
+          3 rotation) to reach any pose. What is the extra DOF used for? Research the term
+          "null-space motion" and write a one-paragraph explanation in your own words.
+        </li>
+        <li>
+          Modify <code>minimal_ros2_node.py</code> to publish a <code>std_msgs/String</code>
+          message to a topic called <code>/hello_robot</code> every 0.5 seconds. In a second
+          terminal, subscribe to that topic with <code>ros2 topic echo /hello_robot</code> and
+          confirm you see the messages. (<em>Reference:</em> <a href="appendix.html#ros2-primer">Appendix A</a>)
+        </li>
+      </ol>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════
+         Key Terms
+         ════════════════════════════════════════════════════ -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 1</h3>
+      <dl>
+        <dt>DOF</dt><dd>Degree of Freedom — one independent axis of motion.</dd>
+        <dt>Revolute joint</dt><dd>A joint that rotates about a single fixed axis.</dd>
+        <dt>Node</dt><dd>An independent ROS&nbsp;2 process that communicates via topics/services/actions.</dd>
+        <dt>Topic</dt><dd>A named, one-directional data stream in ROS&nbsp;2.</dd>
+        <dt>Action</dt><dd>A ROS&nbsp;2 interface for long-running tasks with goal, feedback, and result.</dd>
+        <dt>FCI</dt><dd>Franka Control Interface — the 1&nbsp;kHz Ethernet API for direct robot control.</dd>
+        <dt>libfranka</dt><dd>Franka's official C++ library that wraps the FCI protocol.</dd>
+        <dt>MoveIt&nbsp;2</dt><dd>The ROS&nbsp;2 motion planning framework used throughout this tutorial.</dd>
+        <dt>Torque sensor</dt><dd>Measures the rotational force at a joint; enables compliance and safety reflexes.</dd>
+      </dl>
+    </aside>
+
+    <!-- ════════════════════════════════════════════════════
+         References
+         ════════════════════════════════════════════════════ -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          S. Haddadin, A. Albu-Schäffer, et al., "The Franka Emika Robot: A Reference Platform for
+          Robotics Research and Education," <em>IEEE Robotics and Automation Letters</em>, vol. 7,
+          no. 2, pp. 2309–2316, Apr. 2022. DOI:&nbsp;10.1109/LRA.2022.3147388.
+        </li>
+        <li id="ref2">
+          Franka Robotics GmbH, <em>Panda Technical Specifications</em>, Franka Robotics GmbH, 2019.
+          Available: <a href="https://www.franka.de/">https://www.franka.de/</a>
+        </li>
+        <li id="ref3">
+          S. Macenski, T. Foote, B. Gerkey, C. Lalancette, and W. Woodall, "Robot Operating System
+          2: Design, Architecture, and Uses in the Wild," <em>Science Robotics</em>, vol. 7, no. 66,
+          eabm6074, May 2022. DOI:&nbsp;10.1126/scirobotics.abm6074.
+        </li>
+        <li id="ref4">
+          Franka Robotics GmbH, <em>libfranka Documentation</em>, 2023.
+          Available: <a href="https://frankaemika.github.io/docs/">https://frankaemika.github.io/docs/</a>
+        </li>
+        <li id="ref5">
+          D. Coleman, I. Sucan, S. Chitta, and N. Correll, "Reducing the Barrier to Entry of
+          Complex Robotic Software: a MoveIt! Case Study," <em>Journal of Software Engineering for
+          Robotics</em>, vol. 5, no. 1, pp. 3–16, 2014.
+        </li>
+      </ol>
+    </section>
+
+  </main><!-- /main -->
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="index.html">&larr; Home</a>
+    <span class="page-info">Chapter 1 of 10</span>
+    <a href="ch02.html">Chapter 2: Kinematics &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<!-- MathJax -->
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+</body>
+</html>
