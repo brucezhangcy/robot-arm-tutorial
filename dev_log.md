@@ -9,9 +9,9 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 
 ---
 
-## Session 1 — Initial Planning & Scaffolding
+## 2026-05-15 — Initial Scaffolding & Chapter Authoring
 
-### Decisions Made
+### Architecture Decisions
 - **File layout:** `index.html` + `style.css` + `ch01`–`ch10.html` + `appendix.html`
 - **CSS layout:** CSS Grid, 220 px fixed sidebar + 900 px max-width content column (MIT OCW style)
 - **Typography:** Inter (body), JetBrains Mono (code) via Google Fonts CDN
@@ -33,11 +33,9 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 | `ch03.html` | Chapter 3: Simulation Environment |
 | `ch04.html` | Chapter 4: Position Control (Joint Space) |
 
----
+### Chapter Contents
 
-## Session 1 — Chapter Contents
-
-### Chapter 1 — Foundations & Toolchain
+#### Chapter 1 — Foundations & Toolchain
 **Sections:** §1.1 The Franka Panda · §1.2 ROS 2 Overview · §1.3 The Software Stack · §1.4 Installation · §1.5 Verification · Exercises · References
 
 **Diagrams:**
@@ -47,7 +45,7 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 
 **Code examples:** `verify_install.sh`, `minimal_ros2_node.py`
 
-### Chapter 2 — Kinematics & Coordinate Frames
+#### Chapter 2 — Kinematics & Coordinate Frames
 **Sections:** §2.1 Coordinate Frames · §2.2 DH Parameters · §2.3 Forward Kinematics · §2.4 Inverse Kinematics · §2.5 The Jacobian · §2.6 Workspace & Singularities · §2.7 Code Examples · Exercises · References
 
 **Diagrams:**
@@ -59,7 +57,7 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 
 **Code examples:** `fk_manual.py`, `jacobian_numerical.py`
 
-### Chapter 3 — Simulation Environment
+#### Chapter 3 — Simulation Environment
 **Sections:** §3.1 Component Overview · §3.2 URDF & XACRO · §3.3 TF Tree · §3.4 Controller Manager · §3.5 Launching Simulation · §3.6 Code Examples · Exercises · References
 
 **Diagrams:**
@@ -70,7 +68,7 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 
 **Code examples:** `launch_sim.sh`, `inspect_tf.sh`, `list_controllers.sh`
 
-### Chapter 4 — Position Control (Joint Space)
+#### Chapter 4 — Position Control (Joint Space)
 **Sections:** §4.1 MoveIt 2 Planning Pipeline · §4.2 Joint Trajectory Controller · §4.3 Sending a Joint Goal · §4.4 Monitoring Execution · §4.5 Code Examples · Exercises · References
 
 **Diagrams:**
@@ -82,12 +80,12 @@ A multi-chapter HTML tutorial on programming the Franka Emika Panda robot arm.
 
 ---
 
-## Session 1 — SVG Diagram Fixes
+## 2026-05-15 — SVG Diagram Quality Fixes
 
-### Problem identified
-User screenshot review revealed multiple SVG rendering problems across ch01 and ch02.
+### Problem
+Screenshot review revealed multiple SVG rendering defects across ch01 and ch02: text overflowing panel boundaries, incorrectly anchored arcs, and overlapping elements.
 
-### Fixes applied
+### Fixes Applied
 
 #### Figure 2.1 — DH Convention (ch02.html)
 **Step 1 — text overflow:**
@@ -96,108 +94,88 @@ User screenshot review revealed multiple SVG rendering problems across ch01 and 
 - `x′ (rotated)` label was too long → clipped
 - Fixed: shortened to `x′` at (x=116, y=102)
 
-**Step 1 — bad θ arc:**
+**Step 1 — bad theta arc:**
 - Original used relative move `m 45,0 a 45,45 0 0,0 -17,-38` — arc started from an offset point, not the joint origin
 - Fixed: replaced with absolute coords `M 114 140 A 42 42 0 0 0 108 119` centered at (72, 140)
 
-**Step 4 — tilted α arc:**
+**Step 4 — tilted alpha arc:**
 - Original `m 0,-50 a 50,50 0 0,1 22,-25` started 50 px above origin then drew a relative arc → visually tilted
 - Fixed: `M 65 100 A 50 50 0 0 1 89 106` where start and end are both at radius 50 from center (65, 150)
 
-### Pending SVG fixes (identified, not yet applied)
-- **Figure 1.1 (ch01):** Arm is drawn as a vertical stack of rectangles; needs redesign to articulated bent-arm pose
-- **Figure 1.3 (ch01):** Right-side annotation text at x=452 overflows 580 px viewBox
+### Known Issues (deferred)
+- **Figure 1.1 (ch01):** Arm drawn as vertical stack of rectangles; candidate for articulated bent-arm redesign
+- **Figure 1.3 (ch01):** Right-side annotation text at x=452 may overflow 580 px viewBox at some zoom levels
 - **Figure 2.4 (ch02):** Side view workspace shape is a lens (two mirrored arcs); should be an annular sector
 - **Figure 2.5 (ch02):** Right panel EEF box overlaps J5 circle; left panel annotation box overlaps arm geometry
 
-### Memory file created
-`~/.claude/projects/.../memory/feedback_svg_diagrams.md` — checklist of SVG rules to prevent future recurrence (text margins, overlap checks, arm anatomy, arc math, workspace shape)
+### Process Improvement
+Created `~/.claude/projects/.../memory/feedback_svg_diagrams.md` — a persistent checklist of SVG authoring rules (text margins, overlap clearance, arm anatomy, arc math, workspace shape) applied to all future diagrams.
 
 ---
 
-## Session 2 — Vocabulary & Accessibility Fixes
+## 2026-05-15 — Vocabulary & Accessibility Pass
 
-### Problem identified
-User noted that technical terms were appearing without definition, which is problematic for a high school audience.
+### Problem
+Technical terms appeared without definition, which is problematic for the target high school audience.
 
-### Fixes applied
+### Fixes Applied
 
 #### ch01.html — §1.1.1 Physical Anatomy
-- Added definition of **end-effector (EEF)** in body text before Figure 1.1, which was the term's first appearance; previously it only appeared as a diagram label with no prose explanation.
+- Added definition of **end-effector (EEF)** in body text before Figure 1.1; previously appeared only as a diagram label with no prose explanation.
 
 #### ch01.html — Table 1.1
 - **Payload** row: added inline gloss `(maximum mass of the attached tool + object)`
 - **Repeatability** row: added inline gloss `(how consistently it returns to the exact same point)`
 
-#### ch01.html — §1.3 Software Stack (MoveIt 2 description)
-- **"pose"** was used without definition; added `(the desired position and orientation of the end-effector)` inline on first use. Term is formally defined in ch02 §2.1 but appeared in ch01 first.
+#### ch01.html — §1.3 Software Stack
+- **"pose"** used without definition; added `(the desired position and orientation of the end-effector)` inline on first use. Term is formally defined in ch02 §2.1 but appeared in ch01 first.
 
 #### ch02.html — §2.7.2 Numerical Jacobian Estimation
-- **"manipulability"** appeared in code and exercises but not in prose; added an explanatory sentence before the code block with the formula `w = √det(J J^T)`, plain-language meaning (zero at singularities, larger = more dexterous), and Yoshikawa [4] citation.
+- **"manipulability"** appeared in code and exercises but not in prose; added an explanatory sentence before the code block with the formula `w = sqrt(det(J J^T))`, plain-language meaning (zero at singularities, larger = more dexterous), and Yoshikawa [4] citation.
 
 ---
 
----
+## 2026-05-15 — Appendix D & ROS Concepts Diagram
 
-## Session 3 — Appendix D + ROS Concepts Diagram
-
-### Changes Made
-
-#### 1. New Figure 1.2 — ROS 2 Communication Primitives (ch01.html)
+### New Figure 1.2 — ROS 2 Communication Primitives (ch01.html)
 **Location:** Inserted after §1.2.1 Core Concepts list, before the Panda-specific node graph.
 
-**What it shows:** Three side-by-side panels in a single SVG (viewBox 620×268):
+**Content:** Three side-by-side panels in a single SVG (viewBox 620×268):
 - **Topic panel** — Publisher Node → `/topic_name` arrow → Subscriber Node. Labeled "continuous data stream, no reply required." Example: `/joint_states` at 1 kHz.
 - **Service panel** — Client Node sends Request (solid arrow down), Server Node returns Response (dashed arrow up). Labeled "synchronous call-reply." Example: `add_collision_object`.
 - **Action panel** — Action Client sends Goal (solid arrow down), Action Server streams Feedback ×N (dashed arrow up), then sends final Result (solid arrow up). Labeled "async, long-running task, cancellable." Example: MoveGroup motion plan.
 
-**SVG quality:** All text within panel boundaries, 8 px minimum clearance between elements, no raw LaTeX tokens.
+**SVG quality:** All text within panel boundaries, 8 px minimum clearance, no raw notation tokens.
 
-**Figure numbering impact:** Old Figure 1.2 renumbered → Figure 1.3; old Figure 1.3 renumbered → Figure 1.4. All in-text references updated accordingly:
-- §1.2.2 paragraph: "Figure 1.2 shows" → "Figure 1.3 shows"
-- §1.3 paragraph: "Figure 1.3 shows these layers" → "Figure 1.4 shows these layers"
-- Figure comments, IDs, and captions all updated.
+**Figure renumbering:** Old Figure 1.2 → Figure 1.3; old Figure 1.3 → Figure 1.4. All in-text references and figure IDs updated accordingly.
 
----
-
-#### 2. New File — appendix-hardware.html (Appendix D)
-**Title:** Appendix D · Robot Arm Hardware Reference
-
-**Sections:**
+### New File — appendix-hardware.html (Appendix D)
 
 | Section | Content |
 |---|---|
-| D.1 Form Factor | Physical overview of the Panda as a desktop cobot. Table: arm mass (18 kg), base footprint (120×120 mm), bolt circle (85 mm, 4× M6), stowed height (~850 mm), IP40 rating, cable routing. Figure D.1: side-view silhouette with stowed height + max-reach arc dimension arrows; top-view mounting diagram with bolt circle and workspace footprint. |
-| D.2 Mechanical Specs | All-revolute joint types explanation. Table: per-joint range (deg), max speed (deg/s), max torque (Nm), link offset to next joint (mm) for J1–J7 + EEF. Callout: joint limits are hardware-enforced; firmware rejects out-of-limit commands. Note explaining J4's asymmetric range (-176 to -4 deg) as a DH frame convention artifact. |
-| D.3 Electrical Specs | FCU architecture description (power, real-time computer, Ethernet switch). Table: mains voltage (100–240 V AC), peak power (~1500 W), idle power (~50 W), internal 48 V DC bus, 1 Gbps Ethernet FCI, PREEMPT_RT kernel requirement, hardware e-stop (safety cat. 3, IEC 62061). Warning callout: dedicated NIC required for FCI — shared ports cause jitter faults. |
-| D.4 Motion Envelope | Interaction between reach, payload, speed, and acceleration explained. Table: max reach (855 mm), max payload (3 kg), repeatability (±0.1 mm, ISO 9283), max EEF speed (~1.7 m/s), max EEF acceleration (~13 m/s²), collision force threshold (10 N), max joint acceleration and jerk limits. Figure D.2: horizontal bar chart of per-joint max torque — J1–J4 at 87 Nm (dark blue), J5–J7 at 12 Nm (light blue). Explains 7:1 torque ratio and why impedance gains must be tuned separately for arm vs. wrist groups. |
-| D.5 Safety & Compliance | ISO/TS 15066 collaborative robot standard. Three reflex categories: joint torque reflex, joint velocity reflex, Cartesian contact reflex (default 10 N / 10 Nm). Soft stops vs. hard mechanical limits — controller decelerates under active torque rather than cutting power. Why 1 kHz loop makes soft stops effective. Tip callout: `setCollisionBehavior()` for threshold adjustment. |
+| D.1 Form Factor | Desktop cobot overview. Table: arm mass (18 kg), base footprint (120×120 mm), bolt circle (85 mm, 4× M6), stowed height (~850 mm), IP40, cable routing. Figure D.1: side-view silhouette with dimension arrows; top-view mounting diagram with bolt circle and workspace footprint. |
+| D.2 Mechanical Specs | All-revolute joint explanation. Table: per-joint range (deg), max speed (deg/s), max torque (Nm), link offset (mm) for J1–J7 + EEF. Warning callout on hardware-enforced limits. Note on J4 asymmetric range as DH convention artifact. |
+| D.3 Electrical Specs | FCU architecture overview. Table: mains input (100–240 V AC), peak power (~1500 W), idle power (~50 W), internal 48 V DC bus, 1 Gbps Ethernet FCI, PREEMPT_RT kernel requirement, e-stop (IEC 62061 cat. 3). Warning: dedicated NIC required for FCI. |
+| D.4 Motion Envelope | Interaction between reach, payload, speed, and acceleration. Table: max reach (855 mm), max payload (3 kg), repeatability (±0.1 mm ISO 9283), max EEF speed (~1.7 m/s), max EEF acceleration (~13 m/s²), collision force threshold (10 N), joint acceleration and jerk limits. Figure D.2: horizontal bar chart of per-joint max torque; explains 7:1 arm-to-wrist torque ratio. |
+| D.5 Safety & Compliance | ISO/TS 15066 standard. Three reflex types: joint torque, joint velocity, Cartesian contact (default 10 N / 10 Nm). Soft stops vs. hard mechanical limits. Why 1 kHz control loop makes soft stops effective. Tip on `setCollisionBehavior()` threshold adjustment. |
 
 **SVG figures:**
-- **Figure D.1** (viewBox 580×280): Two-panel physical dimensions schematic. Left: simplified stowed-arm side view with red double-headed height arrow (~850 mm), blue max-reach arc (855 mm), purple base-width bracket (120 mm). Right: top-view mounting diagram with 120×120 mm base plate, 85 mm bolt circle (dashed purple), 4 mounting holes (open circles), outer workspace footprint (dashed blue). All text fits within panel bounds; no overlapping elements.
-- **Figure D.2** (viewBox 500×240): Horizontal bar chart. Scale: 350 px = 90 Nm (3.89 px/Nm). J1–J4 bars at 338 px wide (87 Nm, dark blue #0057b8); J5–J7 bars at 47 px wide (12 Nm, light blue #3498db). Gridlines at 30 and 60 Nm. X-axis with tick labels at 0, 30, 60, 90 Nm. Labeled legend boxes for "Arm J1–J4" and "Wrist J5–J7" at right side. All value labels positioned to right of bars with 8 px clearance; no overflow past 500 px viewBox width.
+- **Figure D.1** (viewBox 580×280): Two-panel schematic. Left: stowed-arm side view with red double-headed height arrow (~850 mm), blue max-reach arc (855 mm), purple base-width bracket (120 mm). Right: top-view mounting diagram with 120×120 mm base plate, 85 mm bolt circle, 4 mounting holes, outer workspace footprint.
+- **Figure D.2** (viewBox 500×240): Horizontal bar chart. Scale: 350 px = 90 Nm. J1–J4 bars at 338 px (87 Nm, dark blue); J5–J7 bars at 47 px (12 Nm, light blue). Gridlines at 30 and 60 Nm; labeled legend boxes at right. All value labels clear of bar edges; no overflow past 500 px viewBox width.
+
+### Sidebar Updated — All 5 HTML Files
+Added `D · Robot Arm Hardware Specs` link to the Appendices nav in `index.html`, `ch01.html`, `ch02.html`, `ch03.html`, `ch04.html`, and `appendix-hardware.html` (active state).
 
 ---
 
-#### 3. Sidebar Updated — All 5 HTML Files
-Added `D · Robot Arm Hardware Specs` link to the Appendices section of the sidebar nav in:
-- `index.html`
-- `ch01.html`
-- `ch02.html`
-- `ch03.html`
-- `ch04.html`
-- `appendix-hardware.html` (active state)
+## Planned Work
 
----
-
-## Planned Chapters (not yet written)
-
-| Chapter | Topic | Key Diagrams |
+| File | Topic | Key Diagrams |
 |---|---|---|
-| ch05.html | Position Control — Cartesian | SE(3) pose, compute_cartesian_path, frame chain |
-| ch06.html | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
-| ch07.html | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
-| ch08.html | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |
-| ch09.html | Real Hardware Transition | Safety flowchart, hardware comms, latency comparison |
-| ch10.html | Pick & Place Capstone | FSM state diagram, 3D EEF trajectory, full node graph |
-| appendix.html | Appendices A–C | ROS 2/Python primer, DH table, troubleshooting |
+| `ch05.html` | Position Control — Cartesian | SE(3) pose, compute_cartesian_path, frame chain |
+| `ch06.html` | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
+| `ch07.html` | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
+| `ch08.html` | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |
+| `ch09.html` | Real Hardware Transition | Safety flowchart, hardware comms, latency comparison |
+| `ch10.html` | Pick & Place Capstone | FSM state diagram, 3D EEF trajectory, full node graph |
+| `appendix.html` | Appendices A–C | ROS 2/Python primer, DH table, troubleshooting |
