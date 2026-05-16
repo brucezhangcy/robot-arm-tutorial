@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appendix D · Robot Arm Hardware Reference — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html" class="active">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Appendix</div>
+        <ul>
+          <li><a href="#form-factor">D.1 Form Factor</a></li>
+          <li><a href="#mechanical">D.2 Mechanical Specs</a></li>
+          <li><a href="#electrical">D.3 Electrical Specs</a></li>
+          <li><a href="#motion">D.4 Motion Envelope</a></li>
+          <li><a href="#safety">D.5 Safety &amp; Compliance</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Appendix D</span>
+    <h1>Robot Arm Hardware Reference</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      This appendix is a hardware reference for the Franka Emika Panda robot arm. It covers
+      physical form factor, joint-level mechanical parameters, electrical supply and communication
+      requirements, motion performance limits, and the safety standards the arm is designed to meet.
+      Use it as a quick lookup when interpreting specifications in the main chapters or when
+      planning a physical installation.
+    </div>
+
+    <!-- ════════════════════════════════════════
+         D.1  Form Factor
+         ════════════════════════════════════════ -->
+    <section id="form-factor">
+      <h2>D.1 Form Factor and Physical Overview</h2>
+
+      <p>
+        A <em>collaborative robot arm</em> (cobot) is designed to work alongside people in shared
+        workspaces. Its physical form factor — size, weight, mounting footprint, and reach envelope —
+        determines what table or cell it can fit on, how much counterweight the frame must provide,
+        and how close a human operator can safely stand during operation.
+      </p>
+
+      <p>
+        The Panda is a <strong>desktop-class cobot</strong>: light enough to be moved by one person
+        (18&nbsp;kg arm body) and compact enough to mount on a standard laboratory bench. Its
+        aluminium housing requires only a 120&nbsp;mm square base plate. Figure&nbsp;D.1 shows
+        the key physical dimensions.
+      </p>
+
+      <!-- ── Figure D.1: Physical Dimensions ── -->
+      <figure id="figD-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 280" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="280" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="dim" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="dimr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="blk" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- ── LEFT: Side view ── -->
+            <text x="140" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">Side View</text>
+
+            <!-- Ground line -->
+            <line x1="30" y1="250" x2="252" y2="250" stroke="#ccc" stroke-width="1.2" stroke-dasharray="5,3"/>
+
+            <!-- Base platform -->
+            <rect x="90" y="236" width="100" height="16" rx="3" fill="#bdc3cb" stroke="#8896aa" stroke-width="1.2"/>
+            <text x="140" y="248" text-anchor="middle" fill="#555" font-size="9">Base flange</text>
+
+            <!-- Arm body — simplified stacked links -->
+            <!-- Link column 1-4 (lower arm) -->
+            <rect x="110" y="140" width="60" height="98" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.2"/>
+            <!-- Link column 5-7 (upper arm/wrist) -->
+            <rect x="116" y="80" width="48" height="62" rx="5" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.2"/>
+            <!-- EEF cap -->
+            <rect x="122" y="64" width="36" height="18" rx="4" fill="#f39c12" stroke="#d68910" stroke-width="1.2"/>
+            <text x="140" y="76" text-anchor="middle" fill="white" font-weight="700" font-size="9">EEF</text>
+
+            <!-- Joint indicators -->
+            <circle cx="140" cy="236" r="5" fill="#0057b8"/>
+            <circle cx="140" cy="200" r="5" fill="#0057b8"/>
+            <circle cx="140" cy="160" r="5" fill="#0057b8"/>
+            <circle cx="140" cy="130" r="5" fill="#2980b9"/>
+            <circle cx="140" cy="100" r="5" fill="#2980b9"/>
+            <circle cx="140" cy="80"  r="4" fill="#3498db"/>
+            <circle cx="140" cy="64"  r="4" fill="#3498db"/>
+
+            <!-- Height dimension arrow: left side -->
+            <line x1="72" y1="64" x2="72" y2="236" stroke="#c0392b" stroke-width="1.3"
+                  marker-end="url(#dim)" marker-start="url(#dimr)"/>
+            <text x="36" y="152" text-anchor="middle" fill="#c0392b" font-size="10" font-weight="600">~850 mm</text>
+            <text x="36" y="164" text-anchor="middle" fill="#c0392b" font-size="9">stowed</text>
+
+            <!-- Base width dimension: below base -->
+            <line x1="90" y1="262" x2="190" y2="262" stroke="#8e44ad" stroke-width="1.3"
+                  marker-end="url(#dim)" marker-start="url(#dimr)"/>
+            <text x="140" y="276" text-anchor="middle" fill="#8e44ad" font-size="9" font-weight="600">120 mm base</text>
+
+            <!-- Reach arc (dashed semicircle) -->
+            <path d="M 140 236 A 172 172 0 0 1 140 64" fill="none" stroke="#2980b9" stroke-width="1" stroke-dasharray="5,3"/>
+            <line x1="140" y1="236" x2="230" y2="100" stroke="#2980b9" stroke-width="1" stroke-dasharray="3,2"/>
+            <text x="200" y="128" fill="#2980b9" font-size="9">855 mm</text>
+            <text x="200" y="140" fill="#2980b9" font-size="9">max reach</text>
+
+            <!-- Divider -->
+            <line x1="285" y1="15" x2="285" y2="265" stroke="#ddd" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <!-- ── RIGHT: Top view (mounting) ── -->
+            <text x="432" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">Top View — Mounting</text>
+
+            <!-- Outer workspace circle (footprint) -->
+            <circle cx="432" cy="148" r="118" fill="#e8f4fd" stroke="#2980b9" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+            <text x="432" y="38" text-anchor="middle" fill="#2980b9" font-size="9">workspace footprint</text>
+
+            <!-- Base square -->
+            <rect x="372" y="88" width="120" height="120" rx="4" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <text x="432" y="152" text-anchor="middle" fill="#555" font-size="9">Base plate</text>
+            <text x="432" y="164" text-anchor="middle" fill="#555" font-size="9">120 x 120 mm</text>
+
+            <!-- Bolt circle (dashed) -->
+            <circle cx="432" cy="148" r="42" fill="none" stroke="#8e44ad" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="432" y="200" text-anchor="middle" fill="#8e44ad" font-size="9">85 mm bolt circle</text>
+            <text x="432" y="211" text-anchor="middle" fill="#8e44ad" font-size="9">4x M6 bolts</text>
+
+            <!-- Mounting holes -->
+            <circle cx="402" cy="118" r="5" fill="white" stroke="#8e44ad" stroke-width="1.5"/>
+            <circle cx="462" cy="118" r="5" fill="white" stroke="#8e44ad" stroke-width="1.5"/>
+            <circle cx="402" cy="178" r="5" fill="white" stroke="#8e44ad" stroke-width="1.5"/>
+            <circle cx="462" cy="178" r="5" fill="white" stroke="#8e44ad" stroke-width="1.5"/>
+
+            <!-- Center dot -->
+            <circle cx="432" cy="148" r="4" fill="#333"/>
+            <text x="438" y="145" fill="#333" font-size="8">origin</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure D.1.</strong> Physical dimensions of the Franka Panda.
+          <em>Left:</em> side view showing the arm in the stowed (folded-upright) position.
+          The red double-headed arrow indicates the stowed height of approximately 850&nbsp;mm;
+          the blue dashed arc shows the 855&nbsp;mm maximum reach envelope; the purple bracket shows
+          the 120&nbsp;mm base width.
+          <em>Right:</em> top-view mounting layout. The base occupies a 120&nbsp;mm square
+          footprint; four M6 bolts on an 85&nbsp;mm diameter bolt circle secure the arm to the surface.
+          The outer dashed circle represents the workspace footprint at full extension.
+        </figcaption>
+      </figure>
+
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Arm type</td><td>7-DOF serial manipulator</td><td>All revolute joints</td></tr>
+          <tr><td>Total arm mass</td><td>18 kg</td><td>Excludes end-effector and cables</td></tr>
+          <tr><td>Base footprint</td><td>120 mm × 120 mm</td><td>Square mounting plate</td></tr>
+          <tr><td>Bolt circle</td><td>85 mm diameter, 4× M6</td><td>Standard ISO flange pattern</td></tr>
+          <tr><td>Stowed height</td><td>~850 mm</td><td>Arm fully folded upright</td></tr>
+          <tr><td>IP rating</td><td>IP40</td><td>Indoor environments; no liquid splash</td></tr>
+          <tr><td>Cable exit</td><td>Integrated harness, rear of base</td><td>Single cable to controller</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ════════════════════════════════════════
+         D.2  Mechanical Specifications
+         ════════════════════════════════════════ -->
+    <section id="mechanical">
+      <h2>D.2 Mechanical Specifications</h2>
+
+      <p>
+        All seven joints are <em>revolute</em> (rotating around a fixed axis). Each joint has a
+        physical range limit, a maximum angular speed, and a maximum output torque — the product
+        of the gear ratio and motor torque. The first four joints (J1–J4) form the arm and carry
+        the full weight of the wrist and payload, so they have substantially higher torque limits
+        than the wrist joints (J5–J7).
+      </p>
+
+      <div class="callout callout-warning">
+        <strong>Joint limits are hardware-enforced.</strong> The robot's firmware will trigger a
+        protective stop if a commanded position, velocity, or torque exceeds the limits in this
+        table. MoveIt&nbsp;2 reads these limits from the URDF and will refuse to plan motions
+        that exceed them, but direct <code>libfranka</code> code must check them manually.
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Joint</th>
+            <th>Range (degrees)</th>
+            <th>Max Speed (deg/s)</th>
+            <th>Max Torque (Nm)</th>
+            <th>Link Offset to Next (mm)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>J1</td><td>-166 to +166</td><td>150</td><td>87</td><td>333</td></tr>
+          <tr><td>J2</td><td>-101 to +101</td><td>150</td><td>87</td><td>0 (lateral offset)</td></tr>
+          <tr><td>J3</td><td>-166 to +166</td><td>150</td><td>87</td><td>316</td></tr>
+          <tr><td>J4</td><td>-176 to -4</td><td>150</td><td>87</td><td>82.5 (lateral)</td></tr>
+          <tr><td>J5</td><td>-166 to +166</td><td>180</td><td>12</td><td>384</td></tr>
+          <tr><td>J6</td><td>-1 to +215</td><td>180</td><td>12</td><td>0 (lateral offset)</td></tr>
+          <tr><td>J7</td><td>-166 to +166</td><td>180</td><td>12</td><td>88 (lateral)</td></tr>
+          <tr><td>EEF flange</td><td>n/a (fixed)</td><td>n/a</td><td>n/a</td><td>107 (axial offset)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-note">
+        <strong>Why does J4 have an asymmetric range (-176 to -4)?</strong> The DH frame assignment
+        places the zero angle of J4 pointing "backward" relative to the natural arm posture.
+        In practice the arm reaches a full elbow-up / elbow-down range; the numbers simply reflect
+        the coordinate convention documented in Appendix&nbsp;B.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════
+         D.3  Electrical Specifications
+         ════════════════════════════════════════ -->
+    <section id="electrical">
+      <h2>D.3 Electrical Specifications</h2>
+
+      <p>
+        The Panda arm connects to a separate <em>Franka Control Unit</em> (FCU) via a single
+        proprietary cable. The FCU houses the power supply, the real-time computer that runs the
+        1&nbsp;kHz control loop, and the Ethernet switch used by the Franka Control Interface
+        (FCI). The arm itself contains no user-serviceable electronics.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Mains input voltage</td><td>100–240 V AC</td><td>Auto-ranging; IEC C14 inlet on FCU</td></tr>
+          <tr><td>Mains frequency</td><td>50 / 60 Hz</td><td>Global supply compatible</td></tr>
+          <tr><td>Peak power draw</td><td>~1500 W</td><td>During simultaneous rapid joint motion</td></tr>
+          <tr><td>Idle power</td><td>~50 W</td><td>Brakes engaged, arm stationary</td></tr>
+          <tr><td>Internal DC bus</td><td>48 V DC</td><td>Distributed to joint actuators; not user-accessible</td></tr>
+          <tr><td>FCI communication</td><td>1 Gbps Ethernet</td><td>Dedicated NIC; do not route through shared switches</td></tr>
+          <tr><td>FCI protocol</td><td>UDP, custom framing</td><td>libfranka handles framing; 1 kHz command rate</td></tr>
+          <tr><td>Real-time OS requirement</td><td>Linux PREEMPT_RT kernel</td><td>Required for 1 kHz loop; standard kernel causes jitter faults</td></tr>
+          <tr><td>Emergency stop</td><td>Hardware e-stop button + software watchdog</td><td>Safety category 3 per IEC 62061</td></tr>
+          <tr><td>External I/O</td><td>Digital I/O, pneumatic valve ports</td><td>On FCU front panel; controlled via libfranka</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-warning">
+        <strong>Dedicated network interface required.</strong> The FCI link must use a dedicated
+        Gigabit Ethernet NIC on the control PC. Sharing the port with other traffic (ROS&nbsp;2
+        DDS, internet) introduces latency spikes that cause the robot to trigger protective stops.
+        Use two separate NICs: one for FCI, one for ROS&nbsp;2 DDS.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════
+         D.4  Motion Performance Envelope
+         ════════════════════════════════════════ -->
+    <section id="motion">
+      <h2>D.4 Motion Performance Envelope</h2>
+
+      <p>
+        The performance figures in the table below describe the end-effector (EEF) at the
+        <em>flange center</em> with a <em>nominal payload</em>. In practice all four parameters
+        interact: maximum payload degrades at full extension (moment arm is longest), and maximum
+        EEF speed degrades at high payload because the firmware enforces torque limits at each joint.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Maximum reach</td><td>855 mm</td><td>Measured from base origin to EEF flange center</td></tr>
+          <tr><td>Maximum payload</td><td>3 kg</td><td>Includes end-effector mass; degrades near workspace boundary</td></tr>
+          <tr><td>Repeatability</td><td>±0.1 mm</td><td>ISO 9283; same goal, same direction, 30 repeated trials</td></tr>
+          <tr><td>Max EEF linear speed</td><td>~1.7 m/s (typical)</td><td>At mid-reach, no payload; limited by joint velocity limits</td></tr>
+          <tr><td>Max EEF acceleration</td><td>~13 m/s²</td><td>Approximate; firmware enforces joint acceleration limits</td></tr>
+          <tr><td>Collision force threshold</td><td>10 N (reflex default)</td><td>Configurable via libfranka; triggers protective stop</td></tr>
+          <tr><td>Max joint acceleration</td><td>15 rad/s² (J1–J4), 25 rad/s² (J5–J7)</td><td>Hard limit enforced by firmware</td></tr>
+          <tr><td>Max joint jerk</td><td>7500 rad/s³ (J1–J4), 10000 rad/s³ (J5–J7)</td><td>Limits snap; protects gears from shock loading</td></tr>
+        </tbody>
+      </table>
+
+      <h3>D.4.1 Per-Joint Torque Limits</h3>
+      <p>
+        The large torque gap between arm joints (J1–J4, 87&nbsp;Nm) and wrist joints
+        (J5–J7, 12&nbsp;Nm) is the most important mechanical characteristic to keep in mind when
+        programming. Impedance and force-control gains (Chapter&nbsp;7) must be tuned separately
+        for the two groups because their stiffness characteristics differ by nearly an order of
+        magnitude. Figure&nbsp;D.2 visualizes this gap.
+      </p>
+
+      <!-- ── Figure D.2: Per-joint Torque Bar Chart ── -->
+      <figure id="figD-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 500 240" width="460" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="500" height="240" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="axm" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#333"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="280" y="16" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Maximum Joint Torque (Nm)</text>
+
+            <!-- Chart area: x=80 to x=430, y=25 to y=200 -->
+            <!-- Scale: 90 Nm = 350 px → 3.89 px/Nm -->
+
+            <!-- Gridlines at 30 and 60 Nm -->
+            <!-- 30 Nm: x = 80 + 30*3.89 = 80+116.7 = 197 -->
+            <!-- 60 Nm: x = 80 + 60*3.89 = 80+233.3 = 313 -->
+            <!-- 90 Nm: x = 80 + 90*3.89 = 80+350   = 430 -->
+            <line x1="197" y1="25" x2="197" y2="200" stroke="#eee" stroke-width="1"/>
+            <line x1="313" y1="25" x2="313" y2="200" stroke="#eee" stroke-width="1"/>
+            <line x1="430" y1="25" x2="430" y2="200" stroke="#eee" stroke-width="1"/>
+
+            <!-- Bars: bar height=20, gap=7, first bar y=28 -->
+            <!-- J1: 87 Nm → 87*3.89 = 338 px wide -->
+            <rect x="80" y="28" width="338" height="20" rx="3" fill="#0057b8"/>
+            <text x="74" y="42" text-anchor="end" fill="#333" font-size="10">Joint 1</text>
+            <text x="422" y="42" fill="#0057b8" font-size="9" font-weight="600">87 Nm</text>
+
+            <!-- J2: 87 Nm -->
+            <rect x="80" y="55" width="338" height="20" rx="3" fill="#0057b8"/>
+            <text x="74" y="69" text-anchor="end" fill="#333" font-size="10">Joint 2</text>
+            <text x="422" y="69" fill="#0057b8" font-size="9" font-weight="600">87 Nm</text>
+
+            <!-- J3: 87 Nm -->
+            <rect x="80" y="82" width="338" height="20" rx="3" fill="#0057b8"/>
+            <text x="74" y="96" text-anchor="end" fill="#333" font-size="10">Joint 3</text>
+            <text x="422" y="96" fill="#0057b8" font-size="9" font-weight="600">87 Nm</text>
+
+            <!-- J4: 87 Nm -->
+            <rect x="80" y="109" width="338" height="20" rx="3" fill="#0057b8"/>
+            <text x="74" y="123" text-anchor="end" fill="#333" font-size="10">Joint 4</text>
+            <text x="422" y="123" fill="#0057b8" font-size="9" font-weight="600">87 Nm</text>
+
+            <!-- J5: 12 Nm → 12*3.89 = 46.7 px -->
+            <rect x="80" y="136" width="47" height="20" rx="3" fill="#3498db"/>
+            <text x="74" y="150" text-anchor="end" fill="#333" font-size="10">Joint 5</text>
+            <text x="132" y="150" fill="#3498db" font-size="9" font-weight="600">12 Nm</text>
+
+            <!-- J6: 12 Nm -->
+            <rect x="80" y="163" width="47" height="20" rx="3" fill="#3498db"/>
+            <text x="74" y="177" text-anchor="end" fill="#333" font-size="10">Joint 6</text>
+            <text x="132" y="177" fill="#3498db" font-size="9" font-weight="600">12 Nm</text>
+
+            <!-- J7: 12 Nm -->
+            <rect x="80" y="190" width="47" height="20" rx="3" fill="#3498db"/>
+            <text x="74" y="204" text-anchor="end" fill="#333" font-size="10">Joint 7</text>
+            <text x="132" y="204" fill="#3498db" font-size="9" font-weight="600">12 Nm</text>
+
+            <!-- X axis -->
+            <line x1="80" y1="213" x2="435" y2="213" stroke="#333" stroke-width="1.2" marker-end="url(#axm)"/>
+
+            <!-- Tick labels on x axis -->
+            <text x="80"  y="226" text-anchor="middle" fill="#555" font-size="9">0</text>
+            <text x="197" y="226" text-anchor="middle" fill="#555" font-size="9">30</text>
+            <text x="313" y="226" text-anchor="middle" fill="#555" font-size="9">60</text>
+            <text x="430" y="226" text-anchor="middle" fill="#555" font-size="9">90 Nm</text>
+
+            <!-- Arm vs Wrist label -->
+            <rect x="440" y="28" width="55" height="50" rx="3" fill="#e8f0fb" stroke="#0057b8" stroke-width="1"/>
+            <text x="467" y="42" text-anchor="middle" fill="#0057b8" font-size="8" font-weight="700">Arm</text>
+            <text x="467" y="54" text-anchor="middle" fill="#0057b8" font-size="8">J1 – J4</text>
+            <text x="467" y="66" text-anchor="middle" fill="#0057b8" font-size="8">87 Nm</text>
+
+            <rect x="440" y="136" width="55" height="50" rx="3" fill="#e8f4fd" stroke="#3498db" stroke-width="1"/>
+            <text x="467" y="150" text-anchor="middle" fill="#3498db" font-size="8" font-weight="700">Wrist</text>
+            <text x="467" y="162" text-anchor="middle" fill="#3498db" font-size="8">J5 – J7</text>
+            <text x="467" y="174" text-anchor="middle" fill="#3498db" font-size="8">12 Nm</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure D.2.</strong> Maximum output torque per joint for the Franka Panda.
+          Arm joints J1–J4 (dark blue) can each deliver 87&nbsp;Nm — sufficient to accelerate the
+          full arm and a 3&nbsp;kg payload. Wrist joints J5–J7 (light blue) are limited to 12&nbsp;Nm,
+          reflecting their smaller actuators and the fact that they only need to orient the
+          end-effector, not support its weight.
+          This 7:1 torque ratio is the primary reason impedance control gains must be tuned
+          separately for the arm and wrist groups.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ════════════════════════════════════════
+         D.5  Safety & Compliance
+         ════════════════════════════════════════ -->
+    <section id="safety">
+      <h2>D.5 Safety and Compliance</h2>
+
+      <p>
+        The Panda is certified as a <strong>collaborative robot</strong> under
+        <strong>ISO/TS&nbsp;15066</strong> — the technical specification that defines power-and-force
+        limiting (PFL) operation. In PFL mode the robot monitors contact forces in real time and
+        stops before force thresholds that could injure a human are reached. This is fundamentally
+        different from a traditional industrial robot that stops only when it hits a hard limit switch.
+      </p>
+
+      <h3>D.5.1 Built-in Reflex Categories</h3>
+      <p>
+        The firmware monitors three independent conditions. Any single violation triggers an
+        immediate <em>protective stop</em>: all joints decelerate under controlled torque (not a
+        crash stop) and brakes engage within a few milliseconds.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Reflex Type</th><th>Triggered by</th><th>Default threshold</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Joint torque reflex</td>
+            <td>Measured joint torque exceeds expected (model) torque by the threshold</td>
+            <td>Per-joint; default ~10–20 Nm above model prediction</td>
+          </tr>
+          <tr>
+            <td>Joint velocity reflex</td>
+            <td>Joint angular speed exceeds the per-joint velocity limit</td>
+            <td>Per-joint; see Table D.1 max speed column</td>
+          </tr>
+          <tr>
+            <td>Cartesian contact reflex</td>
+            <td>Estimated external force or torque at the EEF exceeds threshold</td>
+            <td>10 N force / 10 Nm torque (configurable via libfranka)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>D.5.2 Soft Stops vs. Hard Mechanical Limits</h3>
+      <p>
+        The Panda uses <em>soft stops</em> for all reflex-triggered halts: the controller decelerates
+        the joints under active torque rather than cutting power. This preserves the gearboxes,
+        prevents the arm from falling under gravity, and allows the arm to be moved back into the
+        workspace without a manual reset in most cases. <em>Hard mechanical limits</em> exist only
+        as a last-resort backup for extreme over-travel; reaching them requires a factory reset.
+      </p>
+
+      <p>
+        The 1&nbsp;kHz control loop is what enables soft stops to be effective. At 1&nbsp;kHz the
+        controller can detect an anomaly and issue a corrective torque command within 1&nbsp;ms —
+        fast enough to limit contact force spikes before they reach unsafe levels. This is why the
+        PREEMPT_RT real-time kernel is mandatory: a standard kernel with 10–100&nbsp;ms scheduling
+        jitter would defeat the purpose of the high-frequency loop.
+      </p>
+
+      <div class="callout callout-tip">
+        <strong>Adjusting reflex thresholds in code:</strong> You can raise (or lower) contact
+        thresholds using <code>robot.setCollisionBehavior()</code> in libfranka, or via the
+        <code>franka_ros2</code> parameter server. Raising them above the defaults is sometimes
+        needed for high-speed pick-and-place but should be accompanied by a formal risk assessment
+        per ISO/TS&nbsp;15066.
+      </div>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Appendix D</h3>
+      <dl>
+        <dt>Revolute joint</dt><dd>A joint that rotates about a single fixed axis; all Panda joints are revolute.</dd>
+        <dt>Payload</dt><dd>The maximum mass the robot can carry at the end-effector flange while meeting all spec limits.</dd>
+        <dt>Repeatability</dt><dd>The ability to return to the same pose repeatedly; distinct from absolute accuracy (how close to the commanded pose).</dd>
+        <dt>Franka Control Interface (FCI)</dt><dd>The 1&nbsp;Gbps Ethernet protocol that carries real-time torque commands and sensor data at 1&nbsp;kHz.</dd>
+        <dt>Protective stop</dt><dd>A controlled deceleration triggered by any safety reflex; different from an emergency stop (power cut).</dd>
+        <dt>ISO/TS 15066</dt><dd>The collaborative robot safety standard; defines biomechanical force limits for human-robot contact.</dd>
+        <dt>PREEMPT_RT</dt><dd>A Linux kernel patch that enables hard real-time scheduling; required for the 1&nbsp;kHz FCI loop.</dd>
+        <dt>Power-and-force limiting (PFL)</dt><dd>The safety mode in which the robot limits contact force rather than relying on physical guarding.</dd>
+      </dl>
+    </aside>
+
+  </main><!-- /main -->
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="appendix.html#troubleshooting">&larr; Appendix C: Troubleshooting</a>
+    <span class="page-info">Appendix D of D</span>
+    <a href="index.html">Home &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

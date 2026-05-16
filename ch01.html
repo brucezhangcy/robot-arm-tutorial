@@ -41,6 +41,7 @@
         <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
         <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
         <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
       </ul>
 
       <!-- In-page TOC -->
@@ -306,14 +307,109 @@
         </li>
       </ul>
 
+      <p>
+        Figure&nbsp;1.2 shows these three primitives side by side. Mastering them is the
+        prerequisite to reading any ROS&nbsp;2 node graph.
+      </p>
+
+      <!-- ── Figure 1.2: ROS 2 Communication Primitives ── -->
+      <figure id="fig1-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 620 268" width="580" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="620" height="268" fill="#fafbfc" rx="4"/>
+            <defs>
+              <marker id="tp" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#0057b8"/>
+              </marker>
+              <marker id="srq" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+              <marker id="srp" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#888"/>
+              </marker>
+              <marker id="ago" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#e67e22"/>
+              </marker>
+              <marker id="agf" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#8e44ad"/>
+              </marker>
+              <marker id="agr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#27ae60"/>
+              </marker>
+            </defs>
+
+            <!-- ══ Panel 1: Topic ══ -->
+            <rect x="10" y="10" width="190" height="248" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
+            <text x="105" y="30" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">Topic</text>
+            <text x="105" y="44" text-anchor="middle" fill="#555" font-size="9">publish / subscribe</text>
+            <rect x="28" y="52" width="154" height="36" rx="5" fill="#0057b8" stroke="#003d82" stroke-width="1.2"/>
+            <text x="105" y="74" text-anchor="middle" fill="white" font-weight="700" font-size="11">Publisher Node</text>
+            <line x1="105" y1="88" x2="105" y2="140" stroke="#0057b8" stroke-width="1.8" marker-end="url(#tp)"/>
+            <text x="110" y="119" fill="#0057b8" font-size="9" font-weight="600">/topic_name</text>
+            <rect x="28" y="140" width="154" height="36" rx="5" fill="#2980b9" stroke="#1a6491" stroke-width="1.2"/>
+            <text x="105" y="162" text-anchor="middle" fill="white" font-weight="700" font-size="11">Subscriber Node</text>
+            <line x1="15" y1="189" x2="195" y2="189" stroke="#bed4f0" stroke-width="1"/>
+            <text x="105" y="204" text-anchor="middle" fill="#555" font-size="9">Continuous data stream</text>
+            <text x="105" y="218" text-anchor="middle" fill="#555" font-size="9">No reply required</text>
+            <text x="105" y="232" text-anchor="middle" fill="#888" font-size="9">e.g. /joint_states at 1 kHz</text>
+
+            <!-- ══ Panel 2: Service ══ -->
+            <rect x="212" y="10" width="190" height="248" rx="5" fill="#f0faf4" stroke="#a9dfbf" stroke-width="1"/>
+            <text x="307" y="30" text-anchor="middle" fill="#27ae60" font-weight="700" font-size="12">Service</text>
+            <text x="307" y="44" text-anchor="middle" fill="#555" font-size="9">request / response</text>
+            <rect x="230" y="52" width="154" height="36" rx="5" fill="#27ae60" stroke="#1e8449" stroke-width="1.2"/>
+            <text x="307" y="74" text-anchor="middle" fill="white" font-weight="700" font-size="11">Client Node</text>
+            <line x1="282" y1="88" x2="282" y2="140" stroke="#27ae60" stroke-width="1.8" marker-end="url(#srq)"/>
+            <text x="222" y="119" fill="#27ae60" font-size="9" font-weight="600">Request</text>
+            <line x1="330" y1="140" x2="330" y2="88" stroke="#888" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#srp)"/>
+            <text x="335" y="119" fill="#888" font-size="9">Response</text>
+            <rect x="230" y="140" width="154" height="36" rx="5" fill="#1e8449" stroke="#145a32" stroke-width="1.2"/>
+            <text x="307" y="162" text-anchor="middle" fill="white" font-weight="700" font-size="11">Server Node</text>
+            <line x1="217" y1="189" x2="397" y2="189" stroke="#a9dfbf" stroke-width="1"/>
+            <text x="307" y="204" text-anchor="middle" fill="#555" font-size="9">Synchronous call-reply</text>
+            <text x="307" y="218" text-anchor="middle" fill="#555" font-size="9">Caller waits for one reply</text>
+            <text x="307" y="232" text-anchor="middle" fill="#888" font-size="9">e.g. add_collision_object</text>
+
+            <!-- ══ Panel 3: Action ══ -->
+            <rect x="414" y="10" width="196" height="248" rx="5" fill="#fff8ee" stroke="#f8c471" stroke-width="1"/>
+            <text x="512" y="30" text-anchor="middle" fill="#e67e22" font-weight="700" font-size="12">Action</text>
+            <text x="512" y="44" text-anchor="middle" fill="#555" font-size="9">goal + feedback + result</text>
+            <rect x="432" y="52" width="160" height="36" rx="5" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.2"/>
+            <text x="512" y="74" text-anchor="middle" fill="white" font-weight="700" font-size="11">Action Client</text>
+            <line x1="470" y1="88" x2="470" y2="140" stroke="#e67e22" stroke-width="1.8" marker-end="url(#ago)"/>
+            <text x="424" y="108" fill="#e67e22" font-size="9" font-weight="600">Goal</text>
+            <line x1="512" y1="140" x2="512" y2="88" stroke="#8e44ad" stroke-width="1.3" stroke-dasharray="3,2" marker-end="url(#agf)"/>
+            <text x="517" y="108" fill="#8e44ad" font-size="9">Feedback (x N)</text>
+            <line x1="554" y1="140" x2="554" y2="88" stroke="#27ae60" stroke-width="1.5" marker-end="url(#agr)"/>
+            <text x="517" y="130" fill="#27ae60" font-size="9">Result</text>
+            <rect x="432" y="140" width="160" height="36" rx="5" fill="#d35400" stroke="#a04000" stroke-width="1.2"/>
+            <text x="512" y="162" text-anchor="middle" fill="white" font-weight="700" font-size="11">Action Server</text>
+            <line x1="419" y1="189" x2="605" y2="189" stroke="#f8c471" stroke-width="1"/>
+            <text x="512" y="204" text-anchor="middle" fill="#555" font-size="9">Async, long-running task</text>
+            <text x="512" y="218" text-anchor="middle" fill="#555" font-size="9">Streaming feedback, cancellable</text>
+            <text x="512" y="232" text-anchor="middle" fill="#888" font-size="9">e.g. MoveGroup motion plan</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 1.2.</strong> The three ROS&nbsp;2 communication primitives.
+          A <em>Topic</em> is a named, one-directional data stream — publishers fire continuously
+          and any number of subscribers receive the data with no reply.
+          A <em>Service</em> is a synchronous call-reply: the client blocks until the server responds once.
+          An <em>Action</em> extends the service model for long-running tasks: the client sends a
+          goal, receives streaming feedback while the server executes, and finally gets a result.
+          MoveIt&nbsp;2 exposes motion planning as an action.
+        </figcaption>
+      </figure>
+
       <h3>1.2.2 The ROS&nbsp;2 Node Graph</h3>
       <p>
-        When the full Panda simulation is running, several nodes are active simultaneously. Figure&nbsp;1.2
+        When the full Panda simulation is running, several nodes are active simultaneously. Figure&nbsp;1.3
         shows the major nodes and how they communicate for our tutorial setup.
       </p>
 
-      <!-- ── Figure 1.2: ROS 2 Node Graph ── -->
-      <figure id="fig1-2">
+      <!-- ── Figure 1.3: ROS 2 Node Graph ── -->
+      <figure id="fig1-3">
         <div class="figure-inner">
           <svg viewBox="0 0 700 400" width="660" xmlns="http://www.w3.org/2000/svg"
                font-family="Inter, system-ui, sans-serif" font-size="12">
@@ -427,7 +523,7 @@
           </svg>
         </div>
         <figcaption>
-          <strong>Figure 1.2.</strong> The ROS&nbsp;2 node graph for the Panda tutorial setup.
+          <strong>Figure 1.3.</strong> The ROS&nbsp;2 node graph for the Panda tutorial setup.
           Colored boxes are independent processes. Arrows are topics, services, or actions with their
           names labeled. Your Python code (<code>your_node.py</code>) communicates exclusively with
           <code>move_group</code> via the MoveGroup action interface — it never directly commands
@@ -453,12 +549,12 @@
       <p>
         Between your Python code and the physical motors are several layers of software. Each layer
         provides an abstraction: you write a goal in terms of "meters and radians," and the layers
-        below translate that into motor currents at 1&nbsp;kHz. Figure&nbsp;1.3 shows these layers
+        below translate that into motor currents at 1&nbsp;kHz. Figure&nbsp;1.4 shows these layers
         from top to bottom.
       </p>
 
-      <!-- ── Figure 1.3: Software Stack Layers ── -->
-      <figure id="fig1-3">
+      <!-- ── Figure 1.4: Software Stack Layers ── -->
+      <figure id="fig1-4">
         <div class="figure-inner">
           <svg viewBox="0 0 580 380" width="540" xmlns="http://www.w3.org/2000/svg"
                font-family="Inter, system-ui, sans-serif" font-size="12">
@@ -532,7 +628,7 @@
           </svg>
         </div>
         <figcaption>
-          <strong>Figure 1.3.</strong> The full software stack from user Python code (top) to
+          <strong>Figure 1.4.</strong> The full software stack from user Python code (top) to
           physical hardware (bottom). Each layer presents a higher-level abstraction to the layer
           above it. The same user code runs in simulation by replacing the <code>franka_ros2</code>
           hardware interface with a Gazebo plugin that simulates motor dynamics.

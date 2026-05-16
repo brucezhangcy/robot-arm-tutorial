@@ -137,6 +137,59 @@ User noted that technical terms were appearing without definition, which is prob
 
 ---
 
+---
+
+## Session 3 — Appendix D + ROS Concepts Diagram
+
+### Changes Made
+
+#### 1. New Figure 1.2 — ROS 2 Communication Primitives (ch01.html)
+**Location:** Inserted after §1.2.1 Core Concepts list, before the Panda-specific node graph.
+
+**What it shows:** Three side-by-side panels in a single SVG (viewBox 620×268):
+- **Topic panel** — Publisher Node → `/topic_name` arrow → Subscriber Node. Labeled "continuous data stream, no reply required." Example: `/joint_states` at 1 kHz.
+- **Service panel** — Client Node sends Request (solid arrow down), Server Node returns Response (dashed arrow up). Labeled "synchronous call-reply." Example: `add_collision_object`.
+- **Action panel** — Action Client sends Goal (solid arrow down), Action Server streams Feedback ×N (dashed arrow up), then sends final Result (solid arrow up). Labeled "async, long-running task, cancellable." Example: MoveGroup motion plan.
+
+**SVG quality:** All text within panel boundaries, 8 px minimum clearance between elements, no raw LaTeX tokens.
+
+**Figure numbering impact:** Old Figure 1.2 renumbered → Figure 1.3; old Figure 1.3 renumbered → Figure 1.4. All in-text references updated accordingly:
+- §1.2.2 paragraph: "Figure 1.2 shows" → "Figure 1.3 shows"
+- §1.3 paragraph: "Figure 1.3 shows these layers" → "Figure 1.4 shows these layers"
+- Figure comments, IDs, and captions all updated.
+
+---
+
+#### 2. New File — appendix-hardware.html (Appendix D)
+**Title:** Appendix D · Robot Arm Hardware Reference
+
+**Sections:**
+
+| Section | Content |
+|---|---|
+| D.1 Form Factor | Physical overview of the Panda as a desktop cobot. Table: arm mass (18 kg), base footprint (120×120 mm), bolt circle (85 mm, 4× M6), stowed height (~850 mm), IP40 rating, cable routing. Figure D.1: side-view silhouette with stowed height + max-reach arc dimension arrows; top-view mounting diagram with bolt circle and workspace footprint. |
+| D.2 Mechanical Specs | All-revolute joint types explanation. Table: per-joint range (deg), max speed (deg/s), max torque (Nm), link offset to next joint (mm) for J1–J7 + EEF. Callout: joint limits are hardware-enforced; firmware rejects out-of-limit commands. Note explaining J4's asymmetric range (-176 to -4 deg) as a DH frame convention artifact. |
+| D.3 Electrical Specs | FCU architecture description (power, real-time computer, Ethernet switch). Table: mains voltage (100–240 V AC), peak power (~1500 W), idle power (~50 W), internal 48 V DC bus, 1 Gbps Ethernet FCI, PREEMPT_RT kernel requirement, hardware e-stop (safety cat. 3, IEC 62061). Warning callout: dedicated NIC required for FCI — shared ports cause jitter faults. |
+| D.4 Motion Envelope | Interaction between reach, payload, speed, and acceleration explained. Table: max reach (855 mm), max payload (3 kg), repeatability (±0.1 mm, ISO 9283), max EEF speed (~1.7 m/s), max EEF acceleration (~13 m/s²), collision force threshold (10 N), max joint acceleration and jerk limits. Figure D.2: horizontal bar chart of per-joint max torque — J1–J4 at 87 Nm (dark blue), J5–J7 at 12 Nm (light blue). Explains 7:1 torque ratio and why impedance gains must be tuned separately for arm vs. wrist groups. |
+| D.5 Safety & Compliance | ISO/TS 15066 collaborative robot standard. Three reflex categories: joint torque reflex, joint velocity reflex, Cartesian contact reflex (default 10 N / 10 Nm). Soft stops vs. hard mechanical limits — controller decelerates under active torque rather than cutting power. Why 1 kHz loop makes soft stops effective. Tip callout: `setCollisionBehavior()` for threshold adjustment. |
+
+**SVG figures:**
+- **Figure D.1** (viewBox 580×280): Two-panel physical dimensions schematic. Left: simplified stowed-arm side view with red double-headed height arrow (~850 mm), blue max-reach arc (855 mm), purple base-width bracket (120 mm). Right: top-view mounting diagram with 120×120 mm base plate, 85 mm bolt circle (dashed purple), 4 mounting holes (open circles), outer workspace footprint (dashed blue). All text fits within panel bounds; no overlapping elements.
+- **Figure D.2** (viewBox 500×240): Horizontal bar chart. Scale: 350 px = 90 Nm (3.89 px/Nm). J1–J4 bars at 338 px wide (87 Nm, dark blue #0057b8); J5–J7 bars at 47 px wide (12 Nm, light blue #3498db). Gridlines at 30 and 60 Nm. X-axis with tick labels at 0, 30, 60, 90 Nm. Labeled legend boxes for "Arm J1–J4" and "Wrist J5–J7" at right side. All value labels positioned to right of bars with 8 px clearance; no overflow past 500 px viewBox width.
+
+---
+
+#### 3. Sidebar Updated — All 5 HTML Files
+Added `D · Robot Arm Hardware Specs` link to the Appendices section of the sidebar nav in:
+- `index.html`
+- `ch01.html`
+- `ch02.html`
+- `ch03.html`
+- `ch04.html`
+- `appendix-hardware.html` (active state)
+
+---
+
 ## Planned Chapters (not yet written)
 
 | Chapter | Topic | Key Diagrams |
