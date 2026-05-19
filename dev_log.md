@@ -200,11 +200,41 @@ Includes Appendix D link; ch04.html footer already linked to ch05.html.
 
 ---
 
+## 2026-05-19 — Chapter 6: Velocity Control
+
+### New File — ch06.html
+
+Full chapter (same layout as ch01–ch05), 8 logical sections.
+
+#### Sections & Content
+
+| Section | Content |
+|---|---|
+| §6.1 Why Velocity Control? | Comparison table: position control vs. velocity control (use cases, replanning latency, safety complexity, ros2_control interface, command type); FCI 1 kHz watchdog explained |
+| §6.2 The Velocity Control Loop | Open-loop vs. closed-loop distinction; PD controller equation v_cmd = Kp·e + Kd·ė; Figure 6.1 closed-loop block diagram |
+| §6.3 Velocity Profiles | Trapezoidal profile derivation (t_acc, t_cruise formulas); Figure 6.2 trapezoidal plot; S-curve profile overview |
+| §6.4 Jacobian-Based Cartesian Velocity Control | ẋ = J(q)q̇ inversion; redundancy (n=7 > m=6); DLS pseudoinverse J_dls = Jᵀ(JJᵀ + λ²I)⁻¹; Figure 6.3 full velocity control loop diagram |
+| §6.5 The ros2_control Interface | JointGroupVelocityController YAML config; spawner / switch_controllers commands; watchdog warning callout; Float64MultiArray publish example |
+| §6.6 Code Examples | velocity_ramp.py (trapezoidal single-joint ramp at 200 Hz) and jacobian_velocity.py (DLS J+ with per-joint safety clamp, 200 Hz) |
+| Exercises | 4 exercises: multi-joint ramp with limit guards, triangular profile derivation, damping experiment, proportional Cartesian position control |
+| Key Terms / References | 10 key terms; 5 IEEE references (Siciliano 2009, Chiaverini 2016, Maciejewski 1985, Nakamura 1986, Franka FCI docs) |
+
+#### Figures
+
+| Figure | Description |
+|---|---|
+| Figure 6.1 (viewBox 560×185) | Closed-loop block diagram: v_ref → summing junction → Controller (Kp·e+Kd·ė) → Robot/Plant → v_actual; red dashed feedback path from branch dot back to junction |
+| Figure 6.2 (viewBox 480×210) | Trapezoidal velocity profile: blue trapezoid with shaded fill; dashed v_max reference; phase labels Accel/Cruise/Decel; t₁/t₂/t₃ ticks |
+| Figure 6.3 (viewBox 560×185) | Jacobian velocity loop: v_EEF desired → summing junction → J⁺(q) → Robot → J(q) → v_EEF actual; red dashed feedback |
+
+---
+
 ## Planned Work
 
 | File | Topic | Key Diagrams |
 |---|---|---|
 | ~~`ch05.html`~~ | ~~Position Control — Cartesian~~ | ✓ Complete (2026-05-16) |
+| ~~`ch06.html`~~ | ~~Velocity Control~~ | ✓ Complete (2026-05-19) |
 | `ch06.html` | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
 | `ch07.html` | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
 | `ch08.html` | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |

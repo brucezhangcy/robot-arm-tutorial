@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 6 · Velocity Control — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html" class="active">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#why-velocity">6.1 Why Velocity Control?</a></li>
+          <li><a href="#control-loop">6.2 The Control Loop</a></li>
+          <li><a href="#velocity-profiles">6.3 Velocity Profiles</a></li>
+          <li><a href="#jacobian-velocity">6.4 Jacobian-Based Control</a></li>
+          <li><a href="#ros2-interface">6.5 The ros2_control Interface</a></li>
+          <li><a href="#code">6.6 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 6</span>
+    <h1>Velocity Control</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      Chapters&nbsp;4 and 5 moved the arm by specifying a <em>destination</em> and letting
+      MoveIt&nbsp;2 plan the path. Velocity control is fundamentally different: you stream joint
+      velocities at 1&nbsp;kHz, deciding in real time how fast each joint moves at every moment.
+      This lower-level interface enables reactive behaviours — following a moving object,
+      complying with external forces, and supporting the impedance controller in Chapter&nbsp;7 —
+      that a planning-based approach cannot provide. This chapter explains the velocity control
+      loop, smooth motion profiles, and how the Jacobian lets you command end-effector velocities
+      directly.
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §6.1  Why Velocity Control?
+         ════════════════════════════════════════════════ -->
+    <section id="why-velocity">
+      <h2>6.1 Why Velocity Control?</h2>
+
+      <p>
+        Position control hands a trajectory to the <code>JointTrajectoryController</code> and
+        waits for it to finish. Once the goal is dispatched, you have no low-level influence over
+        the motion. Velocity control keeps the decision loop in your code: at every control tick
+        your node publishes the velocity it wants and immediately reads back the joint state.
+        If the environment changes — a camera detects an obstacle, a force sensor fires — you
+        can react in the next tick.
+      </p>
+
+      <table>
+        <caption>Table&nbsp;6.1 — Position control vs. velocity control</caption>
+        <thead>
+          <tr>
+            <th>Aspect</th>
+            <th>Position / Trajectory Control</th>
+            <th>Velocity Control</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Typical use cases</td>
+            <td>Scripted pick-and-place, calibration moves</td>
+            <td>Teleoperation, visual servoing, admittance tasks</td>
+          </tr>
+          <tr>
+            <td>Replanning latency</td>
+            <td>Hundreds of milliseconds (MoveIt&nbsp;2 planning)</td>
+            <td>One control tick (1&nbsp;ms on Panda FCI)</td>
+          </tr>
+          <tr>
+            <td>Safety complexity</td>
+            <td>Low — controller enforces trajectory limits</td>
+            <td>Higher — your code must not exceed joint limits</td>
+          </tr>
+          <tr>
+            <td>ros2_control interface</td>
+            <td><code>JointTrajectoryController</code></td>
+            <td><code>JointGroupVelocityController</code></td>
+          </tr>
+          <tr>
+            <td>Command type</td>
+            <td>Full trajectory with timestamps</td>
+            <td>Velocity vector updated at &ge;&nbsp;20&nbsp;Hz</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        The Panda supports velocity control through its
+        <strong>Franka Control Interface (FCI)</strong>: the real-time kernel thread reads your
+        velocity commands every millisecond. In simulation the same interface is emulated by
+        Gazebo and ros2_control at 1&nbsp;kHz. Commands that arrive late or stop arriving cause
+        the controller to zero all velocities — a deliberate safety reflex.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §6.2  The Control Loop
+         ════════════════════════════════════════════════ -->
+    <section id="control-loop">
+      <h2>6.2 The Velocity Control Loop</h2>
+
+      <p>
+        Velocity control can operate in <em>open loop</em> (publish a velocity and trust the
+        low-level servo) or <em>closed loop</em> (measure actual velocity, compute an error,
+        and correct it). Most practical implementations are closed loop to reject disturbances.
+        Figure&nbsp;6.1 shows the standard structure.
+      </p>
+
+      <!-- ── Figure 6.1: closed-loop block diagram ── -->
+      <figure id="fig6-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 560 185" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="560" height="185" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr6a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#333"/>
+              </marker>
+              <marker id="arr6r" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="280" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Closed-Loop Velocity Control Block Diagram</text>
+
+            <!-- Input label and arrow -->
+            <text x="5" y="77" fill="#333" font-size="9" font-style="italic">v_ref</text>
+            <line x1="30" y1="80" x2="59" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6a)"/>
+
+            <!-- Summing junction -->
+            <circle cx="74" cy="80" r="14" fill="white" stroke="#555" stroke-width="1.5"/>
+            <text x="74" y="76" text-anchor="middle" fill="#333" font-size="11">+</text>
+            <text x="68" y="90" text-anchor="middle" fill="#c0392b" font-size="11">&#x2212;</text>
+
+            <!-- Error arrow -->
+            <line x1="88" y1="80" x2="130" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6a)"/>
+            <text x="109" y="73" text-anchor="middle" fill="#555" font-size="9" font-style="italic">e</text>
+
+            <!-- Controller block -->
+            <rect x="130" y="62" width="118" height="36" rx="3" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="189" y="78" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="11">Controller</text>
+            <text x="189" y="93" text-anchor="middle" fill="#1d4ed8" font-size="9">Kp · e + Kd · de/dt</text>
+
+            <!-- Command arrow -->
+            <line x1="248" y1="80" x2="292" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6a)"/>
+            <text x="270" y="73" text-anchor="middle" fill="#555" font-size="9" font-style="italic">v_cmd</text>
+
+            <!-- Plant block -->
+            <rect x="292" y="62" width="118" height="36" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="351" y="78" text-anchor="middle" fill="#15803d" font-weight="700" font-size="11">Robot / Plant</text>
+            <text x="351" y="93" text-anchor="middle" fill="#15803d" font-size="9">1 kHz actuator</text>
+
+            <!-- Output arrow -->
+            <line x1="410" y1="80" x2="450" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6a)"/>
+            <text x="430" y="73" text-anchor="middle" fill="#555" font-size="9" font-style="italic">v_actual</text>
+
+            <!-- Branch dot -->
+            <circle cx="447" cy="80" r="3" fill="#c0392b"/>
+
+            <!-- Feedback path -->
+            <line x1="447" y1="80" x2="447" y2="150" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="447" y1="150" x2="74" y2="150" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="74" y1="150" x2="74" y2="94" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr6r)"/>
+            <text x="261" y="165" text-anchor="middle" fill="#c0392b" font-size="9">Feedback — joint encoder via /joint_states</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;6.1.</strong> Closed-loop velocity control block diagram.
+          The controller computes a command proportional to the velocity error
+          \(e = v_{\mathrm{ref}} - v_{\mathrm{actual}}\) and its derivative.
+          The feedback signal is the joint velocity read from <code>/joint_states</code>.
+        </figcaption>
+      </figure>
+
+      <p>
+        The error signal is \( e = v_{\mathrm{ref}} - v_{\mathrm{actual}} \). A
+        <strong>PD velocity controller</strong> outputs:
+      </p>
+
+      <div class="math-block">
+        \[ v_{\mathrm{cmd}} = K_p \, e + K_d \, \dot{e} \]
+      </div>
+
+      <p>
+        The Panda's own servo loop handles the innermost current and torque regulation, so in
+        practice you tune \(K_p\) and \(K_d\) at the ros2_control level and the hardware tracks
+        the resulting velocity command faithfully. A pure integrator (\(K_i\) term) is rarely
+        needed because the hardware servo already eliminates steady-state error.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §6.3  Velocity Profiles
+         ════════════════════════════════════════════════ -->
+    <section id="velocity-profiles">
+      <h2>6.3 Velocity Profiles</h2>
+
+      <p>
+        Commanding a step change in velocity — jumping instantly from 0 to 0.3&nbsp;rad/s — is
+        mathematically equivalent to infinite acceleration at that instant. The joint actuator
+        cannot follow infinite acceleration and will saturate, fault, or excite resonant modes
+        in the arm links. A <strong>velocity profile</strong> shapes how the velocity changes
+        over time to keep acceleration within hardware limits.
+      </p>
+
+      <h3>6.3.1 Trapezoidal Profile</h3>
+
+      <p>
+        The trapezoidal profile is the most common choice: velocity ramps up at constant
+        acceleration \(a_{\max}\), holds at the cruise velocity \(v_{\max}\), then ramps back
+        down. Three parameters fully define it: the peak velocity \(v_{\max}\), the ramp
+        acceleration \(a_{\max}\), and the total displacement \(\Delta\theta\). The phase
+        durations are:
+      </p>
+
+      <div class="math-block">
+        \[
+          t_{\mathrm{acc}} = \frac{v_{\max}}{a_{\max}}, \qquad
+          t_{\mathrm{cruise}} = \frac{\Delta\theta - v_{\max}\,t_{\mathrm{acc}}}{v_{\max}}
+        \]
+      </div>
+
+      <!-- ── Figure 6.2: trapezoidal velocity profile ── -->
+      <figure id="fig6-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 480 210" width="450" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="480" height="210" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr6b" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="240" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Trapezoidal Velocity Profile</text>
+
+            <!-- Y axis -->
+            <line x1="65" y1="165" x2="65" y2="25" stroke="#555" stroke-width="1.5" marker-end="url(#arr6b)"/>
+            <!-- X axis -->
+            <line x1="65" y1="165" x2="435" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arr6b)"/>
+
+            <!-- Axis labels -->
+            <text x="22" y="100" text-anchor="middle" fill="#555" font-size="9"
+                  transform="rotate(-90,22,100)">Velocity (rad/s)</text>
+            <text x="441" y="169" fill="#555" font-size="10">Time</text>
+
+            <!-- v_max dashed reference line -->
+            <line x1="65" y1="65" x2="335" y2="65" stroke="#0057b8" stroke-width="1"
+                  stroke-dasharray="5,3" opacity="0.5"/>
+
+            <!-- Phase boundary dashed verticals -->
+            <line x1="148" y1="65" x2="148" y2="170" stroke="#888" stroke-width="1" stroke-dasharray="3,3"/>
+            <line x1="335" y1="65" x2="335" y2="170" stroke="#888" stroke-width="1" stroke-dasharray="3,3"/>
+
+            <!-- Shaded area under trapezoid -->
+            <polygon points="65,165 148,65 335,65 408,165" fill="rgba(0,87,184,0.12)"/>
+
+            <!-- Trapezoid outline -->
+            <polyline points="65,165 148,65 335,65 408,165"
+                      fill="none" stroke="#0057b8" stroke-width="2.5" stroke-linejoin="round"/>
+
+            <!-- v_max tick and label -->
+            <line x1="60" y1="65" x2="65" y2="65" stroke="#555" stroke-width="1.2"/>
+            <text x="56" y="69" text-anchor="end" fill="#0057b8" font-size="10" font-weight="600">v_max</text>
+
+            <!-- Zero origin marker -->
+            <text x="57" y="169" text-anchor="end" fill="#555" font-size="9">0</text>
+
+            <!-- Phase boundary ticks and time labels -->
+            <line x1="148" y1="165" x2="148" y2="172" stroke="#555" stroke-width="1.2"/>
+            <text x="148" y="182" text-anchor="middle" fill="#555" font-size="9">t&#x2081;</text>
+
+            <line x1="335" y1="165" x2="335" y2="172" stroke="#555" stroke-width="1.2"/>
+            <text x="335" y="182" text-anchor="middle" fill="#555" font-size="9">t&#x2082;</text>
+
+            <line x1="408" y1="165" x2="408" y2="172" stroke="#555" stroke-width="1.2"/>
+            <text x="408" y="182" text-anchor="middle" fill="#555" font-size="9">t&#x2083;</text>
+
+            <!-- Phase labels inside profile -->
+            <text x="106" y="125" text-anchor="middle" fill="#0057b8" font-size="9" font-weight="600">Accel</text>
+            <text x="241" y="50" text-anchor="middle" fill="#0057b8" font-size="9" font-weight="600">Cruise</text>
+            <text x="372" y="125" text-anchor="middle" fill="#0057b8" font-size="9" font-weight="600">Decel</text>
+
+            <!-- Phase duration braces below axis -->
+            <text x="106" y="197" text-anchor="middle" fill="#666" font-size="8">&#x2190; t_acc &#x2192;</text>
+            <text x="241" y="197" text-anchor="middle" fill="#666" font-size="8">&#x2190;&#x2014; t_cruise &#x2014;&#x2192;</text>
+            <text x="372" y="197" text-anchor="middle" fill="#666" font-size="8">&#x2190; t_dec &#x2192;</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;6.2.</strong> Trapezoidal velocity profile for a single joint.
+          The profile ramps linearly from rest to \(v_{\max}\) by time \(t_1\), cruises at
+          constant velocity until \(t_2\), then decelerates back to rest by \(t_3\).
+          Acceleration is constant during each ramp phase, keeping it within hardware limits.
+        </figcaption>
+      </figure>
+
+      <h3>6.3.2 S-Curve Profile</h3>
+
+      <p>
+        The trapezoidal profile produces instantaneous changes in acceleration at the phase
+        boundaries — infinite <em>jerk</em> at those instants. For tasks that require very
+        smooth force transfer — welding, painting, delicate assembly — an
+        <strong>S-curve profile</strong> adds a jerk-limiting ramp to the acceleration phase
+        itself, trading a longer move time for smoother motion. The Panda's internal motion
+        generator uses an S-curve when you use MoveIt&nbsp;2; when you stream velocities
+        directly you implement the profile yourself.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §6.4  Jacobian-Based Velocity Control
+         ════════════════════════════════════════════════ -->
+    <section id="jacobian-velocity">
+      <h2>6.4 Jacobian-Based Cartesian Velocity Control</h2>
+
+      <p>
+        Section&nbsp;2.5 showed that the Jacobian \(J(q)\) maps joint velocities to
+        end-effector velocities:
+      </p>
+
+      <div class="math-block">
+        \[ \dot{\mathbf{x}} = J(q)\,\dot{q} \]
+      </div>
+
+      <p>
+        Inverting this relationship lets you command the end-effector at a desired Cartesian
+        velocity \(\dot{\mathbf{x}}_{\mathrm{des}}\) and compute the corresponding joint
+        velocities automatically:
+      </p>
+
+      <div class="math-block">
+        \[ \dot{q} = J^+(q)\,\dot{\mathbf{x}}_{\mathrm{des}} \]
+      </div>
+
+      <p>
+        where \(J^+\) is the Moore-Penrose pseudoinverse. Because the Panda has 7 joints and
+        the EEF has 6&nbsp;DOF, the system is <em>redundant</em> (\(n = 7 > m = 6\)) and
+        infinitely many joint velocity vectors produce the same EEF velocity. The pseudoinverse
+        selects the minimum-norm solution — the one with the smallest total joint speed.
+      </p>
+
+      <h3>6.4.1 Singularities and Damped Least Squares</h3>
+
+      <p>
+        Near a kinematic singularity, one or more rows of \(J\) approach linear dependence.
+        The pseudoinverse amplifies small numerical errors into arbitrarily large joint velocities.
+        The standard fix is the <strong>damped least-squares</strong> (DLS) pseudoinverse:
+      </p>
+
+      <div class="math-block">
+        \[
+          J^+_{\mathrm{DLS}} = J^{\top}\bigl(J J^{\top} + \lambda^2 I\bigr)^{-1}
+        \]
+      </div>
+
+      <p>
+        A damping constant \(\lambda \approx 0.05\) limits joint velocities near singularities
+        at the cost of a small Cartesian tracking error. Larger \(\lambda\) is safer; smaller
+        \(\lambda\) is more accurate away from singularities. Figure&nbsp;6.3 shows the complete
+        Jacobian velocity control loop.
+      </p>
+
+      <!-- ── Figure 6.3: Jacobian velocity control ── -->
+      <figure id="fig6-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 560 185" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="560" height="185" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr6c" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#333"/>
+              </marker>
+              <marker id="arr6d" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="280" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Jacobian-Based Cartesian Velocity Control</text>
+
+            <!-- Input and arrow -->
+            <text x="5" y="75" fill="#333" font-size="9" font-style="italic">v_EEF</text>
+            <text x="5" y="86" fill="#333" font-size="9" font-style="italic">desired</text>
+            <line x1="38" y1="80" x2="58" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6c)"/>
+
+            <!-- Summing junction -->
+            <circle cx="73" cy="80" r="13" fill="white" stroke="#555" stroke-width="1.5"/>
+            <text x="73" y="76" text-anchor="middle" fill="#333" font-size="11">+</text>
+            <text x="67" y="89" text-anchor="middle" fill="#c0392b" font-size="11">&#x2212;</text>
+
+            <!-- Arrow from junction to J+ block -->
+            <line x1="86" y1="80" x2="118" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6c)"/>
+
+            <!-- J+ block -->
+            <rect x="118" y="62" width="105" height="36" rx="3" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="170" y="78" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="13">J&#x207A;(q)</text>
+            <text x="170" y="93" text-anchor="middle" fill="#1d4ed8" font-size="8">damped pseudoinverse</text>
+
+            <!-- q_dot arrow -->
+            <line x1="223" y1="80" x2="265" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6c)"/>
+            <text x="244" y="73" text-anchor="middle" fill="#555" font-size="9">q_dot</text>
+
+            <!-- Robot block -->
+            <rect x="265" y="62" width="100" height="36" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="315" y="78" text-anchor="middle" fill="#15803d" font-weight="700" font-size="11">Robot</text>
+            <text x="315" y="93" text-anchor="middle" fill="#15803d" font-size="9">1 kHz</text>
+
+            <!-- State arrow -->
+            <line x1="365" y1="80" x2="400" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6c)"/>
+            <text x="382" y="73" text-anchor="middle" fill="#555" font-size="9">q, q_dot</text>
+
+            <!-- J(q) sensor block -->
+            <rect x="400" y="62" width="100" height="36" rx="3" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+            <text x="450" y="78" text-anchor="middle" fill="#92400e" font-weight="700" font-size="13">J(q)</text>
+            <text x="450" y="93" text-anchor="middle" fill="#92400e" font-size="8">fwd velocity</text>
+
+            <!-- Output arrow and branch dot -->
+            <line x1="500" y1="80" x2="540" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr6c)"/>
+            <text x="520" y="73" text-anchor="middle" fill="#555" font-size="9">v_EEF</text>
+            <text x="520" y="84" text-anchor="middle" fill="#555" font-size="8">actual</text>
+            <circle cx="500" cy="80" r="3" fill="#c0392b"/>
+
+            <!-- Feedback path -->
+            <line x1="500" y1="80" x2="500" y2="148" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="500" y1="148" x2="73" y2="148" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="73" y1="148" x2="73" y2="93" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr6d)"/>
+            <text x="287" y="163" text-anchor="middle" fill="#c0392b" font-size="9">Measured EEF velocity feedback</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;6.3.</strong> Jacobian-based Cartesian velocity control loop.
+          The desired EEF velocity is mapped to joint velocities via \(J^+(q)\). The actual EEF
+          velocity is estimated as \(J(q)\,\dot{q}\) using the measured joint velocities and
+          fed back to the summing junction.
+        </figcaption>
+      </figure>
+
+      <p>
+        The Jacobian \(J(q)\) changes with every joint angle update, so it must be recomputed
+        each control tick. MoveIt&nbsp;2 exposes
+        <code>RobotState.get_jacobian(group, link)</code> for exactly this purpose; the call
+        is fast enough to run at the full 1&nbsp;kHz loop rate.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §6.5  ros2_control Velocity Interface
+         ════════════════════════════════════════════════ -->
+    <section id="ros2-interface">
+      <h2>6.5 The ros2_control Velocity Interface</h2>
+
+      <p>
+        Joint velocity commands reach the robot through ros2_control's
+        <strong>velocity command interface</strong>. The relevant controller is
+        <code>JointGroupVelocityController</code>; it subscribes to a
+        <code>std_msgs/Float64MultiArray</code> topic and forwards each element directly to the
+        corresponding joint's velocity interface.
+      </p>
+
+      <h3>6.5.1 Controller Configuration</h3>
+
+      <p>
+        Add the following YAML block to your controller configuration. The velocity controller
+        runs alongside (not instead of) the joint state broadcaster:
+      </p>
+
+      <pre><code class="language-yaml">controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+
+velocity_controller:
+  ros__parameters:
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    interface_name: velocity
+    command_interfaces:
+      - velocity
+    state_interfaces:
+      - position
+      - velocity</code></pre>
+
+      <h3>6.5.2 Loading and Activating the Controller</h3>
+
+      <pre><code class="language-bash"># Spawn the controller in the INACTIVE state
+ros2 run controller_manager spawner velocity_controller --inactive
+
+# Switch: deactivate the trajectory controller, activate velocity controller
+ros2 control switch_controllers \
+    --activate velocity_controller \
+    --deactivate joint_trajectory_controller</code></pre>
+
+      <div class="callout callout-warning">
+        <strong>Safety — watchdog timer.</strong>
+        If no velocity command arrives within 500&nbsp;ms (the default watchdog window), the
+        controller automatically zeroes all joints. Always publish at &ge;&nbsp;20&nbsp;Hz.
+        A dedicated heartbeat thread that publishes all-zero velocities is a common safeguard.
+      </div>
+
+      <h3>6.5.3 Publishing Velocity Commands</h3>
+
+      <p>
+        Commands are a <code>Float64MultiArray</code> whose <code>data</code> field must have
+        exactly 7 elements — one per joint, in the order declared in the controller YAML:
+      </p>
+
+      <pre><code class="language-python">from std_msgs.msg import Float64MultiArray
+
+vel_pub = node.create_publisher(
+    Float64MultiArray, '/velocity_controller/commands', 10)
+
+msg = Float64MultiArray()
+msg.data = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2]   # only joint 7 moves
+vel_pub.publish(msg)</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §6.6  Code Examples
+         ════════════════════════════════════════════════ -->
+    <section id="code">
+      <h2>6.6 Code Examples</h2>
+
+      <h3>6.6.1 Trapezoidal Joint Velocity Ramp</h3>
+
+      <p>
+        The node below ramps a single joint to a target velocity using a trapezoidal profile,
+        holds the cruise phase for the requested duration, then decelerates to rest.
+        All other joints are commanded to zero throughout.
+      </p>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""velocity_ramp.py — trapezoidal ramp on one joint."""
+import time
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
+
+JOINT_COUNT = 7
+PUBLISH_HZ  = 200          # Hz — well above the 20 Hz watchdog minimum
+
+
+class VelocityRampNode(Node):
+    def __init__(self):
+        super().__init__('velocity_ramp')
+        self.pub = self.create_publisher(
+            Float64MultiArray,
+            '/velocity_controller/commands',
+            10,
+        )
+
+    def ramp(
+        self,
+        joint_idx: int,
+        v_max: float,
+        t_acc: float,
+        t_cruise: float,
+    ) -> None:
+        """Trapezoidal profile on joint_idx; all others stay at zero.
+
+        Args:
+            joint_idx: 0-based joint index (0 = panda_joint1).
+            v_max:     cruise velocity in rad/s.
+            t_acc:     ramp-up and ramp-down duration in seconds.
+            t_cruise:  constant-velocity phase duration in seconds.
+        """
+        dt = 1.0 / PUBLISH_HZ
+        steps_acc    = max(1, int(t_acc    / dt))
+        steps_cruise = max(1, int(t_cruise / dt))
+        vels = [0.0] * JOINT_COUNT
+
+        # Ramp up
+        for k in range(steps_acc):
+            vels[joint_idx] = v_max * k / steps_acc
+            self._send(vels)
+            time.sleep(dt)
+
+        # Cruise
+        vels[joint_idx] = v_max
+        for _ in range(steps_cruise):
+            self._send(vels)
+            time.sleep(dt)
+
+        # Ramp down
+        for k in range(steps_acc, 0, -1):
+            vels[joint_idx] = v_max * k / steps_acc
+            self._send(vels)
+            time.sleep(dt)
+
+        # Stop
+        self._send([0.0] * JOINT_COUNT)
+
+    def _send(self, vel: list) -> None:
+        msg = Float64MultiArray()
+        msg.data = vel
+        self.pub.publish(msg)
+
+
+def main():
+    rclpy.init()
+    node = VelocityRampNode()
+    # Ramp joint 0 (panda_joint1) to 0.2 rad/s, hold 2 s, ramp down.
+    node.ramp(joint_idx=0, v_max=0.2, t_acc=0.5, t_cruise=2.0)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>6.6.2 Jacobian-Based EEF Velocity Control</h3>
+
+      <p>
+        This node reads the current joint state, computes the Jacobian, inverts it with damped
+        least squares, and publishes the resulting joint velocities. Running it for two seconds
+        moves the end-effector at 5&nbsp;cm/s in the +X direction of the base frame.
+      </p>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""
+jacobian_velocity.py — stream EEF velocity via damped-least-squares J+.
+
+  v_EEF_desired  →  J+(q)  →  q_dot  →  /velocity_controller/commands
+"""
+import time
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
+from sensor_msgs.msg import JointState
+from moveit.core.robot_state import RobotState
+import moveit_py
+
+JOINT_NAMES = [
+    'panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4',
+    'panda_joint5', 'panda_joint6', 'panda_joint7',
+]
+DAMPING     = 0.05   # lambda in J_dls; increase near singularities
+V_MAX_JOINT = 0.5    # rad/s per-joint safety clamp
+EEF_LINK    = 'panda_hand'
+MOVE_GROUP  = 'panda_arm'
+
+
+class JacobianVelocityNode(Node):
+    def __init__(self):
+        super().__init__('jacobian_velocity')
+
+        self.moveit = moveit_py.MoveItPy(node_name='jacobian_velocity')
+        robot_model = self.moveit.get_robot_model()
+        self.robot_state = RobotState(robot_model)
+
+        self.vel_pub = self.create_publisher(
+            Float64MultiArray,
+            '/velocity_controller/commands',
+            10,
+        )
+        self._q    = np.zeros(7)
+        self._qdot = np.zeros(7)
+
+        self.create_subscription(
+            JointState, '/joint_states', self._joint_cb, 10)
+
+    def _joint_cb(self, msg: JointState) -> None:
+        for name, pos, vel in zip(msg.name, msg.position, msg.velocity):
+            if name in JOINT_NAMES:
+                idx = JOINT_NAMES.index(name)
+                self._q[idx]    = pos
+                self._qdot[idx] = vel
+
+    def send_eef_velocity(self, v_des: np.ndarray) -> None:
+        """Publish joint velocities that produce the desired EEF velocity.
+
+        Args:
+            v_des: 6-vector [vx, vy, vz, wx, wy, wz] in panda_link0 frame.
+        """
+        self.robot_state.set_joint_group_positions(MOVE_GROUP, self._q.tolist())
+        J = np.array(self.robot_state.get_jacobian(MOVE_GROUP, EEF_LINK))
+
+        # Damped least-squares pseudoinverse
+        lam_sq = DAMPING ** 2
+        J_dls  = J.T @ np.linalg.inv(J @ J.T + lam_sq * np.eye(6))
+        q_dot  = np.clip(J_dls @ v_des, -V_MAX_JOINT, V_MAX_JOINT)
+
+        msg = Float64MultiArray()
+        msg.data = q_dot.tolist()
+        self.vel_pub.publish(msg)
+
+
+def main():
+    rclpy.init()
+    node = JacobianVelocityNode()
+
+    # Wait for the first /joint_states message
+    rclpy.spin_once(node, timeout_sec=0.5)
+
+    # Move EEF at 0.05 m/s in +X (base frame) for 2 seconds
+    v   = np.array([0.05, 0.0, 0.0, 0.0, 0.0, 0.0])
+    dt  = 0.005          # 200 Hz publish rate
+    t_end = time.time() + 2.0
+    while time.time() < t_end:
+        node.send_eef_velocity(v)
+        time.sleep(dt)
+
+    # Send zero to stop cleanly
+    node.send_eef_velocity(np.zeros(6))
+    time.sleep(0.05)
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         Exercises
+         ════════════════════════════════════════════════ -->
+    <section id="exercises" class="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Modify <code>velocity_ramp.py</code> to ramp all seven joints simultaneously to
+          different target velocities. What constraint must you add to prevent the arm from
+          exceeding its joint-position limits during a long cruise phase?
+        </li>
+        <li>
+          Derive the cruise duration formula
+          \(t_{\mathrm{cruise}} = (\Delta\theta - v_{\max}\,t_{\mathrm{acc}})\,/\,v_{\max}\)
+          from first principles. What happens when
+          \(\Delta\theta < v_{\max}^2 / a_{\max}\)?
+          (Hint: the profile must switch to a triangular shape with no cruise phase.)
+        </li>
+        <li>
+          In <code>jacobian_velocity.py</code>, set <code>DAMPING = 0</code> and command the arm
+          toward a near-singular configuration (e.g., fully extended). Observe the joint velocity
+          magnitudes. Restore <code>DAMPING = 0.05</code> and repeat. Document the observed
+          difference in joint velocities and EEF tracking accuracy.
+        </li>
+        <li>
+          Extend <code>jacobian_velocity.py</code> to implement proportional Cartesian position
+          control:
+          \(\dot{\mathbf{x}}_{\mathrm{des}} = K_p\,(p_{\mathrm{target}} - p_{\mathrm{current}})\),
+          where \(p_{\mathrm{current}}\) is obtained from the forward kinematics. This is the
+          simplest form of visual servoing without a camera.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h2>Key Terms</h2>
+      <dl>
+        <dt>Velocity control</dt>
+        <dd>A control mode in which the commanded output is a joint velocity rather than a
+            position or torque.</dd>
+        <dt>JointGroupVelocityController</dt>
+        <dd>The ros2_control plugin that reads a <code>Float64MultiArray</code> of joint
+            velocities and forwards them to the hardware interface.</dd>
+        <dt>Trapezoidal profile</dt>
+        <dd>A velocity trajectory that ramps linearly to a cruise speed, holds, then ramps
+            back to zero; keeps acceleration bounded.</dd>
+        <dt>S-curve profile</dt>
+        <dd>A velocity profile that additionally limits jerk by smoothing the ramp phases;
+            useful for delicate or vibration-sensitive tasks.</dd>
+        <dt>Jacobian pseudoinverse (J&#x207A;)</dt>
+        <dd>The Moore-Penrose pseudoinverse of the Jacobian; maps desired EEF velocities to
+            minimum-norm joint velocities.</dd>
+        <dt>Damped least squares (DLS)</dt>
+        <dd>A regularised pseudoinverse
+            \(J^+ = J^\top(JJ^\top + \lambda^2 I)^{-1}\) that limits joint velocity magnitudes
+            near kinematic singularities.</dd>
+        <dt>Singularity</dt>
+        <dd>A configuration in which the Jacobian loses rank; the arm cannot move in one or
+            more Cartesian directions and the pseudoinverse becomes ill-conditioned.</dd>
+        <dt>Watchdog timer</dt>
+        <dd>A safety mechanism that zeroes all joint velocities if no new command arrives
+            within a fixed timeout window.</dd>
+        <dt>Franka Control Interface (FCI)</dt>
+        <dd>The low-latency 1&nbsp;Gbps Ethernet interface that allows external computers to
+            stream commands to the Panda at 1&nbsp;kHz.</dd>
+        <dt>Redundancy</dt>
+        <dd>Having more joints than the task requires; the Panda's 7 joints provide one
+            redundant DOF over the 6-DOF Cartesian task space.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo,
+          <em>Robotics: Modelling, Planning and Control</em>. London: Springer, 2009, ch. 8–9.
+        </li>
+        <li id="ref2">
+          S. Chiaverini, G. Oriolo, and I. D. Walker, "Kinematically redundant manipulators,"
+          in <em>Springer Handbook of Robotics</em>, B. Siciliano and O. Khatib, Eds.
+          Berlin: Springer, 2016, pp. 221–242.
+        </li>
+        <li id="ref3">
+          A. A. Maciejewski and C. A. Klein, "Obstacle avoidance for kinematically redundant
+          manipulators in dynamically varying environments,"
+          <em>Int. J. Robotics Research</em>, vol. 4, no. 3, pp. 109–117, 1985.
+        </li>
+        <li id="ref4">
+          Y. Nakamura and H. Hanafusa, "Inverse kinematic solutions with singularity robustness
+          for robot manipulator control,"
+          <em>ASME J. Dyn. Syst., Meas., Control</em>, vol. 108, no. 3, pp. 163–171, 1986.
+        </li>
+        <li id="ref5">
+          Franka Robotics GmbH, <em>Franka Control Interface (FCI) Documentation</em>,
+          version 5.x, 2023. [Online]. Available:
+          <a href="https://frankaemika.github.io/docs/">frankaemika.github.io/docs/</a>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch05.html">&larr; Chapter 5: Cartesian Control</a>
+    <span class="page-info">Chapter 6 of 10</span>
+    <a href="ch07.html">Chapter 7: Impedance &amp; Torque Control &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>
