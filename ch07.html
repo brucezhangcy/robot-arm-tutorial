@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 7 · Impedance &amp; Torque Control — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html" class="active">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#what-is-impedance">7.1 What Is Impedance Control?</a></li>
+          <li><a href="#msd-model">7.2 Mass-Spring-Damper Model</a></li>
+          <li><a href="#control-law">7.3 The Impedance Control Law</a></li>
+          <li><a href="#kp-kd-space">7.4 Stiffness and Damping Space</a></li>
+          <li><a href="#panda-implementation">7.5 Implementation on the Panda</a></li>
+          <li><a href="#code">7.6 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 7</span>
+    <h1>Impedance &amp; Torque Control</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      Chapters 4–6 controlled where the arm went or how fast it moved. Impedance control
+      answers a different question: <em>how does the arm feel when something pushes it?</em>
+      By commanding joint torques directly, you program the arm to behave like a virtual
+      spring-and-damper system — compliant enough to work safely alongside humans, yet
+      stiff enough to follow a trajectory accurately. This chapter is the technical
+      centerpiece of the tutorial; the concepts here underpin force-sensitive assembly,
+      surface-following, and physical human-robot interaction.
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §7.1  What Is Impedance Control?
+         ════════════════════════════════════════════════ -->
+    <section id="what-is-impedance">
+      <h2>7.1 What Is Impedance Control?</h2>
+
+      <p>
+        Pure position control drives joint angles to a target; it fights any external force
+        that opposes the motion. Pure force control maintains a target contact force; it
+        ignores where the end-effector ends up. <strong>Impedance control</strong> is a
+        middle ground: it controls the dynamic <em>relationship</em> between force and
+        motion <a class="cite" href="#ref1">[1]</a>.
+      </p>
+
+      <p>
+        The intuition is a <strong>virtual spring</strong>. Imagine a spring connecting the
+        desired pose to the actual pose of the end-effector. When the environment pushes the
+        arm away from its goal, the spring pulls it back — harder if the spring is stiff,
+        more gently if the spring is soft. You choose the spring stiffness \(K_p\) and the
+        damping \(K_d\) to set the compliance of the arm:
+      </p>
+
+      <table>
+        <caption>Table&nbsp;7.1 — Effect of stiffness and damping parameters</caption>
+        <thead>
+          <tr><th>Parameter</th><th>Low value</th><th>High value</th><th>Typical use case</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>\(K_p\) (stiffness)</td>
+            <td>Compliant — arm yields to contact</td>
+            <td>Stiff — resists deflection</td>
+            <td>Low: human interaction, polishing. High: precision insertion.</td>
+          </tr>
+          <tr>
+            <td>\(K_d\) (damping)</td>
+            <td>Underdamped — oscillates after disturbance</td>
+            <td>Overdamped — sluggish return</td>
+            <td>Tune to critical damping: \(K_d = 2\sqrt{M K_p}\)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Because torque is commanded directly to the motors, impedance control requires
+        access to the torque interface — available on the real Panda hardware and in
+        the Gazebo simulation through <code>franka_ros2</code>'s
+        <code>CartesianImpedanceController</code>.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §7.2  Mass-Spring-Damper Model
+         ════════════════════════════════════════════════ -->
+    <section id="msd-model">
+      <h2>7.2 The Mass-Spring-Damper Model</h2>
+
+      <p>
+        The mechanical model behind impedance control is a mass \(M\) connected to a fixed
+        wall by a spring with stiffness constant \(K\) and a dashpot with damping constant
+        \(B\) in parallel. An external force \(F_{\mathrm{ext}}\) is applied to the mass.
+        Newton's second law gives the equation of motion:
+      </p>
+
+      <div class="math-block">
+        \[
+          M\ddot{x} + B\dot{x} + K x = F_{\mathrm{ext}}
+        \]
+      </div>
+
+      <p>
+        Here \(x\) is the displacement from the equilibrium position,
+        \(\dot{x}\) is velocity, and \(\ddot{x}\) is acceleration.
+        In impedance control we choose the torque command so that the robot behaves
+        <em>as if</em> it were this mechanical system.
+      </p>
+
+      <!-- ── Figure 7.1: mass-spring-damper ── -->
+      <figure id="fig7-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 420 195" width="400" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="420" height="195" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr7a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#333"/>
+              </marker>
+              <marker id="arr7b" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+              <marker id="arr7c" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="210" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Mass-Spring-Damper Mechanical Model</text>
+
+            <!-- Wall: vertical line + hatch marks -->
+            <line x1="35" y1="45" x2="35" y2="165" stroke="#333" stroke-width="2"/>
+            <line x1="25" y1="55"  x2="35" y2="45"  stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="75"  x2="35" y2="65"  stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="95"  x2="35" y2="85"  stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="115" x2="35" y2="105" stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="135" x2="35" y2="125" stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="155" x2="35" y2="145" stroke="#555" stroke-width="1.2"/>
+            <line x1="25" y1="165" x2="35" y2="155" stroke="#555" stroke-width="1.2"/>
+
+            <!-- ── Spring (K) at y=80 ── -->
+            <!-- Short lead from wall -->
+            <polyline points="35,80 55,80 62,70 71,90 80,70 89,90 98,70 107,90 116,70 125,90 134,70 143,90 152,80 185,80"
+                      fill="none" stroke="#0057b8" stroke-width="2" stroke-linejoin="round"/>
+            <text x="110" y="61" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="12">K</text>
+            <text x="110" y="73" text-anchor="middle" fill="#0057b8" font-size="8">(stiffness)</text>
+
+            <!-- ── Damper (B) at y=130 ── -->
+            <!-- Entry rod from wall -->
+            <line x1="35" y1="130" x2="92" y2="130" stroke="#c0392b" stroke-width="2"/>
+            <!-- Cylinder housing -->
+            <rect x="92" y="118" width="60" height="24" rx="2" fill="#fde8e8" stroke="#c0392b" stroke-width="1.5"/>
+            <!-- Piston blade inside cylinder -->
+            <rect x="128" y="118" width="8" height="24" fill="#c0392b"/>
+            <!-- Exit rod from piston to mass -->
+            <line x1="136" y1="130" x2="185" y2="130" stroke="#c0392b" stroke-width="2"/>
+            <text x="115" y="113" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="12">B</text>
+            <text x="115" y="105" text-anchor="middle" fill="#c0392b" font-size="8">(damping)</text>
+
+            <!-- Vertical connector bar at mass attachment -->
+            <line x1="185" y1="68" x2="185" y2="142" stroke="#555" stroke-width="2"/>
+
+            <!-- ── Mass block ── -->
+            <rect x="185" y="62" width="72" height="80" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="2"/>
+            <text x="221" y="106" text-anchor="middle" fill="#15803d" font-weight="700" font-size="22">M</text>
+
+            <!-- ── External force arrow ── -->
+            <line x1="257" y1="102" x2="318" y2="102" stroke="#c0392b" stroke-width="2.5" marker-end="url(#arr7b)"/>
+            <text x="287" y="93" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="11">F_ext</text>
+
+            <!-- ── Displacement arrow below ── -->
+            <line x1="35" y1="170" x2="185" y2="170" stroke="#555" stroke-width="1.5" marker-end="url(#arr7c)"/>
+            <text x="110" y="183" text-anchor="middle" fill="#555" font-size="9">x (displacement from equilibrium)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;7.1.</strong> Mass-spring-damper mechanical model. The spring
+          (stiffness \(K\)) and dashpot (damping \(B\)) act in parallel between the fixed
+          wall and the mass \(M\). An external force \(F_{\mathrm{ext}}\) displaces the
+          mass by \(x\) from equilibrium. The impedance controller makes the robot behave
+          as this virtual mechanical system.
+        </figcaption>
+      </figure>
+
+      <p>
+        The <em>transfer function</em> from \(F_{\mathrm{ext}}\) to displacement \(x\) in
+        the Laplace domain is the <strong>mechanical impedance</strong>:
+      </p>
+
+      <div class="math-block">
+        \[
+          Z(s) = M s^2 + B s + K
+        \]
+      </div>
+
+      <p>
+        A high-impedance system (large \(M\), \(B\), \(K\)) is hard to deflect.
+        A low-impedance system yields easily. Impedance control lets you set \(K\) and
+        \(B\) in software — effectively re-programming the compliance of the robot arm.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §7.3  The Impedance Control Law
+         ════════════════════════════════════════════════ -->
+    <section id="control-law">
+      <h2>7.3 The Impedance Control Law</h2>
+
+      <p>
+        In <strong>joint-space impedance control</strong> (the form used by
+        <code>franka_ros2</code>), the torque command for each joint is:
+      </p>
+
+      <div class="math-block">
+        \[
+          \boldsymbol{\tau} =
+            K_p\,(\mathbf{q}_d - \mathbf{q})
+            + K_d\,(\dot{\mathbf{q}}_d - \dot{\mathbf{q}})
+            + \boldsymbol{\tau}_{\mathrm{ff}}
+        \]
+      </div>
+
+      <p>
+        where \(\mathbf{q}_d\) is the desired joint angle vector, \(\mathbf{q}\) is the
+        current measured joint angle, \(\dot{\mathbf{q}}_d\) is the desired joint velocity,
+        \(\dot{\mathbf{q}}\) is measured joint velocity, and
+        \(\boldsymbol{\tau}_{\mathrm{ff}}\) is a gravity/friction feed-forward torque
+        computed by the dynamics model <a class="cite" href="#ref2">[2]</a>.
+      </p>
+
+      <p>
+        In <strong>Cartesian-space impedance control</strong>, the spring acts on the
+        pose error in task space. The desired wrench (force + torque) on the end-effector is:
+      </p>
+
+      <div class="math-block">
+        \[
+          \mathbf{F}_{\mathrm{cmd}} =
+            K_p\,(\mathbf{x}_d - \mathbf{x})
+            + K_d\,(\dot{\mathbf{x}}_d - \dot{\mathbf{x}})
+        \]
+      </div>
+
+      <p>
+        This Cartesian wrench is then mapped to joint torques via the transpose Jacobian:
+      </p>
+
+      <div class="math-block">
+        \[
+          \boldsymbol{\tau} = J(q)^{\top} \mathbf{F}_{\mathrm{cmd}} + \boldsymbol{\tau}_{\mathrm{ff}}
+        \]
+      </div>
+
+      <!-- ── Figure 7.2: impedance control block diagram ── -->
+      <figure id="fig7-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 580 185" width="540" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="580" height="185" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr7d" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#333"/>
+              </marker>
+              <marker id="arr7e" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="290" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Cartesian Impedance Control Block Diagram</text>
+
+            <!-- Input -->
+            <text x="4" y="74" fill="#333" font-size="9" font-style="italic">x_d, v_d</text>
+            <line x1="36" y1="80" x2="50" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+
+            <!-- Summing junction -->
+            <circle cx="63" cy="80" r="12" fill="white" stroke="#555" stroke-width="1.5"/>
+            <text x="63" y="76" text-anchor="middle" fill="#333" font-size="11">+</text>
+            <text x="57" y="88" text-anchor="middle" fill="#c0392b" font-size="11">&#x2212;</text>
+
+            <!-- Error arrow -->
+            <line x1="75" y1="80" x2="107" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+            <text x="91" y="73" text-anchor="middle" fill="#555" font-size="9">e, ė</text>
+
+            <!-- Impedance law block -->
+            <rect x="107" y="63" width="100" height="34" rx="3" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="157" y="78" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="10">Impedance</text>
+            <text x="157" y="91" text-anchor="middle" fill="#1d4ed8" font-size="8">Kp·e + Kd·ė</text>
+
+            <!-- F arrow -->
+            <line x1="207" y1="80" x2="240" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+            <text x="223" y="73" text-anchor="middle" fill="#555" font-size="9">F</text>
+
+            <!-- J-transpose block -->
+            <rect x="240" y="63" width="74" height="34" rx="3" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+            <text x="277" y="79" text-anchor="middle" fill="#92400e" font-weight="700" font-size="13">J<tspan baseline-shift="super" font-size="9">T</tspan>(q)</text>
+            <text x="277" y="91" text-anchor="middle" fill="#92400e" font-size="8">torque map</text>
+
+            <!-- tau arrow -->
+            <line x1="314" y1="80" x2="348" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+            <text x="331" y="73" text-anchor="middle" fill="#555" font-size="9">&#x03C4;</text>
+
+            <!-- Robot block -->
+            <rect x="348" y="63" width="92" height="34" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="394" y="78" text-anchor="middle" fill="#15803d" font-weight="700" font-size="11">Robot</text>
+            <text x="394" y="91" text-anchor="middle" fill="#15803d" font-size="8">1 kHz torque</text>
+
+            <!-- State arrow -->
+            <line x1="440" y1="80" x2="468" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+            <text x="454" y="73" text-anchor="middle" fill="#555" font-size="9">q, q&#775;</text>
+
+            <!-- FK+J block -->
+            <rect x="468" y="63" width="72" height="34" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+            <text x="504" y="78" text-anchor="middle" fill="#9d174d" font-weight="700" font-size="10">FK + J</text>
+            <text x="504" y="91" text-anchor="middle" fill="#9d174d" font-size="8">pose, vel</text>
+
+            <!-- Output arrow + branch dot -->
+            <line x1="540" y1="80" x2="566" y2="80" stroke="#333" stroke-width="1.8" marker-end="url(#arr7d)"/>
+            <text x="553" y="73" text-anchor="middle" fill="#555" font-size="9">x, v</text>
+            <circle cx="540" cy="80" r="3" fill="#c0392b"/>
+
+            <!-- Feedback path -->
+            <line x1="540" y1="80"  x2="540" y2="150" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="540" y1="150" x2="63"  y2="150" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3"/>
+            <line x1="63"  y1="150" x2="63"  y2="92"  stroke="#c0392b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr7e)"/>
+            <text x="302" y="164" text-anchor="middle" fill="#c0392b" font-size="9">Measured pose and velocity feedback</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;7.2.</strong> Cartesian impedance control block diagram. The
+          impedance law computes a desired wrench from pose and velocity errors. The Jacobian
+          transpose \(J^T(q)\) maps the wrench to joint torques. Gravity compensation is
+          included in the feed-forward term (not shown for clarity).
+        </figcaption>
+      </figure>
+
+      <h3>7.3.1 Gravity and Friction Feed-Forward</h3>
+
+      <p>
+        Without feed-forward, the arm would drift downward under gravity whenever
+        \(\mathbf{q} = \mathbf{q}_d\) (zero error). The Panda's
+        <code>franka_ros2</code> driver computes the required gravity and friction torques
+        automatically from the dynamic model and adds them to the impedance command, so
+        the arm stays at the target pose even with \(K_p = 0\).
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §7.4  Stiffness and Damping Space
+         ════════════════════════════════════════════════ -->
+    <section id="kp-kd-space">
+      <h2>7.4 Stiffness and Damping Space</h2>
+
+      <p>
+        For a given virtual mass \(M\), the relationship between \(K_p\) (stiffness) and
+        \(K_d\) (damping) determines whether the system is underdamped, critically damped,
+        or overdamped. The <strong>critical damping condition</strong> is:
+      </p>
+
+      <div class="math-block">
+        \[ K_d = 2\sqrt{M\,K_p} \]
+      </div>
+
+      <p>
+        Below the critical curve the system oscillates after a disturbance; above it
+        the response is sluggish. Figure&nbsp;7.3 maps the parameter space.
+      </p>
+
+      <!-- ── Figure 7.3: Kp/Kd parameter space ── -->
+      <figure id="fig7-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 380 252" width="360" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="380" height="252" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr7f" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="190" y="16" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Stiffness-Damping Parameter Space</text>
+
+            <!-- Overdamped region (above critical curve) -->
+            <polygon points="60,210 74,180 88,168 116,150 172,125 228,106 284,90 340,76 340,26 60,26"
+                     fill="rgba(0,87,184,0.10)"/>
+
+            <!-- Underdamped region (below critical curve) -->
+            <polygon points="60,210 74,180 88,168 116,150 172,125 228,106 284,90 340,76 340,210"
+                     fill="rgba(192,57,43,0.08)"/>
+
+            <!-- Critical damping curve: Kd=2*sqrt(Kp), M=1 -->
+            <!-- Scale: Kp 0-1000 → x 60-340 (280px); Kd 0-80 → y 210-26 (184px) -->
+            <polyline points="60,210 74,180 88,168 116,150 172,125 228,106 284,90 340,76"
+                      fill="none" stroke="#333" stroke-width="2.2"/>
+
+            <!-- Axes -->
+            <line x1="60" y1="210" x2="352" y2="210" stroke="#555" stroke-width="1.5" marker-end="url(#arr7f)"/>
+            <line x1="60" y1="210" x2="60"  y2="22"  stroke="#555" stroke-width="1.5" marker-end="url(#arr7f)"/>
+
+            <!-- X axis ticks and labels -->
+            <line x1="130" y1="210" x2="130" y2="215" stroke="#555" stroke-width="1.2"/>
+            <text x="130" y="224" text-anchor="middle" fill="#555" font-size="8">250</text>
+            <line x1="200" y1="210" x2="200" y2="215" stroke="#555" stroke-width="1.2"/>
+            <text x="200" y="224" text-anchor="middle" fill="#555" font-size="8">500</text>
+            <line x1="270" y1="210" x2="270" y2="215" stroke="#555" stroke-width="1.2"/>
+            <text x="270" y="224" text-anchor="middle" fill="#555" font-size="8">750</text>
+            <line x1="340" y1="210" x2="340" y2="215" stroke="#555" stroke-width="1.2"/>
+            <text x="340" y="224" text-anchor="middle" fill="#555" font-size="8">1000</text>
+
+            <!-- Y axis ticks and labels -->
+            <line x1="55" y1="168" x2="60" y2="168" stroke="#555" stroke-width="1.2"/>
+            <text x="52" y="172" text-anchor="end" fill="#555" font-size="8">20</text>
+            <line x1="55" y1="125" x2="60" y2="125" stroke="#555" stroke-width="1.2"/>
+            <text x="52" y="129" text-anchor="end" fill="#555" font-size="8">40</text>
+            <line x1="55" y1="83"  x2="60" y2="83"  stroke="#555" stroke-width="1.2"/>
+            <text x="52" y="87"  text-anchor="end" fill="#555" font-size="8">60</text>
+
+            <!-- Axis labels -->
+            <text x="205" y="238" text-anchor="middle" fill="#555" font-size="10">Kp (stiffness)</text>
+            <text x="18" y="118" text-anchor="middle" fill="#555" font-size="9"
+                  transform="rotate(-90,18,118)">Kd (damping)</text>
+
+            <!-- Region labels -->
+            <text x="155" y="52" text-anchor="middle" fill="#0057b8" font-size="9" font-weight="600">Overdamped</text>
+            <text x="155" y="63" text-anchor="middle" fill="#0057b8" font-size="8">(stable, sluggish)</text>
+
+            <text x="280" y="185" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="600">Underdamped</text>
+            <text x="280" y="196" text-anchor="middle" fill="#c0392b" font-size="8">(oscillates)</text>
+
+            <!-- Critical curve label -->
+            <text x="236" y="97"  text-anchor="start" fill="#333" font-size="8">Kd = 2&#x221A;Kp</text>
+            <text x="236" y="107" text-anchor="start" fill="#555" font-size="7">(critical damping)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;7.3.</strong> Stiffness-damping parameter space for \(M = 1\)
+          (normalised). Below the critical damping curve the system oscillates; above it
+          the response is stable but increasingly sluggish. For the Panda, typical
+          translational values are
+          \(K_p = 200\text{–}600\,\mathrm{N/m}\) and
+          \(K_d = 20\text{–}50\,\mathrm{N{\cdot}s/m}\).
+        </figcaption>
+      </figure>
+
+      <p>
+        For the Panda, the <code>CartesianImpedanceController</code> accepts separate
+        stiffness values for each of the 6 Cartesian DOF (3 translational + 3 rotational),
+        allowing the arm to be, for example, stiff in the Z direction while compliant in
+        XY — ideal for surface-following tasks.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §7.5  Implementation on the Panda
+         ════════════════════════════════════════════════ -->
+    <section id="panda-implementation">
+      <h2>7.5 Implementation on the Panda</h2>
+
+      <p>
+        The <code>franka_ros2</code> package ships a ready-made
+        <code>CartesianImpedanceController</code>. Activate it alongside the joint state
+        broadcaster using the following YAML configuration:
+      </p>
+
+      <pre><code class="language-yaml">cartesian_impedance_controller:
+  ros__parameters:
+    arm_id: panda
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    # Translational stiffness (N/m) for x, y, z
+    cartesian_stiffness_translation: [300.0, 300.0, 300.0]
+    # Rotational stiffness (N·m/rad) for roll, pitch, yaw
+    cartesian_stiffness_rotation:    [30.0, 30.0, 30.0]
+    # Damping ratio (0=no damping, 1=critical)
+    damping_ratio: 1.0</code></pre>
+
+      <p>
+        Load the controller, then switch from the trajectory controller:
+      </p>
+
+      <pre><code class="language-bash">ros2 run controller_manager spawner cartesian_impedance_controller --inactive
+
+ros2 control switch_controllers \
+    --activate cartesian_impedance_controller \
+    --deactivate joint_trajectory_controller</code></pre>
+
+      <div class="callout callout-warning">
+        <strong>Hardware safety note.</strong>
+        The impedance controller bypasses MoveIt&nbsp;2's collision checking. Always test
+        with very low stiffness (\(K_p &lt; 50\)) and observe the arm before increasing
+        values. Keep the emergency stop button within reach during every impedance
+        control session.
+      </div>
+
+      <h3>7.5.1 Updating Stiffness at Runtime</h3>
+
+      <p>
+        The stiffness and damping parameters are exposed as ROS&nbsp;2 parameters and can
+        be updated at any time without restarting the controller:
+      </p>
+
+      <pre><code class="language-bash"># Set translational stiffness to 500 N/m on all axes
+ros2 param set /cartesian_impedance_controller \
+    cartesian_stiffness_translation "[500.0, 500.0, 500.0]"</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §7.6  Code Examples
+         ════════════════════════════════════════════════ -->
+    <section id="code">
+      <h2>7.6 Code Examples</h2>
+
+      <h3>7.6.1 Compliance Demo — Low-Stiffness Pose Holding</h3>
+
+      <p>
+        The following node activates the impedance controller at very low stiffness so the
+        arm can be guided by hand. The target pose is updated to track the current pose,
+        giving the sensation of a "gravity-compensated" mode where the arm floats.
+      </p>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""
+compliance_demo.py — run the arm in a highly compliant mode.
+
+The target pose is set to the current pose, so the only restoring force
+comes from Kp * 0 = 0. Gravity compensation keeps the arm floating.
+Increase Kp to add virtual stiffness around the current configuration.
+"""
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
+from sensor_msgs.msg import JointState
+import moveit_py
+from moveit.core.robot_state import RobotState
+
+KP_LOW    = [10.0, 10.0, 10.0]   # N/m  — very compliant (translation)
+KP_HIGH   = [300.0, 300.0, 300.0] # N/m — normal stiffness
+KR_LOW    = [2.0, 2.0, 2.0]       # N·m/rad — rotational stiffness
+KR_HIGH   = [20.0, 20.0, 20.0]
+
+
+class ComplianceDemoNode(Node):
+    def __init__(self):
+        super().__init__('compliance_demo')
+
+        self.moveit = moveit_py.MoveItPy(node_name='compliance_demo')
+        robot_model = self.moveit.get_robot_model()
+        self.robot_state = RobotState(robot_model)
+
+        self._q = [0.0] * 7
+        self.create_subscription(
+            JointState, '/joint_states', self._joint_cb, 10)
+
+        self.target_pub = self.create_publisher(
+            PoseStamped,
+            '/cartesian_impedance_controller/equilibrium_pose',
+            10,
+        )
+        self.get_logger().info(
+            'Compliance demo ready. The arm should float freely.'
+        )
+
+    def _joint_cb(self, msg: JointState) -> None:
+        joint_names = [
+            'panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4',
+            'panda_joint5', 'panda_joint6', 'panda_joint7',
+        ]
+        for name, pos in zip(msg.name, msg.position):
+            if name in joint_names:
+                self._q[joint_names.index(name)] = pos
+
+    def update_target_to_current(self) -> None:
+        """Publish the current EEF pose as the new equilibrium target."""
+        self.robot_state.set_joint_group_positions('panda_arm', self._q)
+        pose = self.robot_state.get_global_link_transform('panda_hand')
+
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'panda_link0'
+        msg.pose.position.x = float(pose[0, 3])
+        msg.pose.position.y = float(pose[1, 3])
+        msg.pose.position.z = float(pose[2, 3])
+        # Identity orientation quaternion (not rotating equilibrium)
+        msg.pose.orientation.w = 1.0
+        self.target_pub.publish(msg)
+
+
+def main():
+    rclpy.init()
+    node = ComplianceDemoNode()
+
+    # Run for 30 seconds; the arm can be pushed by hand
+    import time
+    t_end = time.time() + 30.0
+    while rclpy.ok() and time.time() < t_end:
+        rclpy.spin_once(node, timeout_sec=0.05)
+        node.update_target_to_current()
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>7.6.2 Joint-Space Impedance Controller (Torque Interface)</h3>
+
+      <p>
+        For full control over joint torques, the example below computes torques directly
+        from the impedance law and publishes them to the joint torque interface.
+      </p>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""
+joint_impedance.py — direct joint-space impedance via the torque interface.
+
+Publishes tau = Kp*(q_d - q) + Kd*(qdot_d - qdot) + tau_gravity
+at 1 kHz to /effort_controllers/commands.
+"""
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
+from sensor_msgs.msg import JointState
+
+JOINT_NAMES = [
+    'panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4',
+    'panda_joint5', 'panda_joint6', 'panda_joint7',
+]
+KP = np.array([600., 600., 600., 600., 250., 150., 50.])  # N·m/rad
+KD = np.array([ 50.,  50.,  50.,  20.,  20.,  20., 10.])  # N·m·s/rad
+
+
+class JointImpedanceNode(Node):
+    def __init__(self):
+        super().__init__('joint_impedance')
+
+        self.tau_pub = self.create_publisher(
+            Float64MultiArray, '/effort_controllers/commands', 10)
+
+        self._q    = np.zeros(7)
+        self._qdot = np.zeros(7)
+        self.create_subscription(
+            JointState, '/joint_states', self._joint_cb, 10)
+
+    def _joint_cb(self, msg: JointState) -> None:
+        for name, pos, vel in zip(msg.name, msg.position, msg.velocity):
+            if name in JOINT_NAMES:
+                i = JOINT_NAMES.index(name)
+                self._q[i]    = pos
+                self._qdot[i] = vel
+
+    def send_torque(self, q_d: np.ndarray, qdot_d: np.ndarray) -> None:
+        """Compute and publish the impedance torque command."""
+        tau = KP * (q_d - self._q) + KD * (qdot_d - self._qdot)
+        msg = Float64MultiArray()
+        msg.data = tau.tolist()
+        self.tau_pub.publish(msg)
+
+
+def main():
+    rclpy.init()
+    node = JointImpedanceNode()
+    rclpy.spin_once(node, timeout_sec=0.5)  # receive one joint state
+
+    # Hold the current pose for 10 seconds
+    import time
+    q_hold = node._q.copy()
+    dt     = 0.001   # 1 kHz
+    t_end  = time.time() + 10.0
+    while rclpy.ok() and time.time() < t_end:
+        rclpy.spin_once(node, timeout_sec=0)
+        node.send_torque(q_d=q_hold, qdot_d=np.zeros(7))
+        time.sleep(dt)
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <!-- Exercises -->
+    <section id="exercises" class="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Set \(K_p = 0\) and \(K_d = 50\,\mathrm{N{\cdot}s/m}\) in
+          <code>joint_impedance.py</code>. What does the arm feel like under this
+          configuration? This mode is called <em>pure damping</em> or <em>rate damping</em>.
+        </li>
+        <li>
+          Derive the critical damping condition \(K_d = 2\sqrt{M K_p}\) from the
+          characteristic equation of the second-order system
+          \(M\ddot{x} + K_d\dot{x} + K_p x = 0\).
+          (Hint: set the discriminant of the characteristic polynomial to zero.)
+        </li>
+        <li>
+          Modify <code>compliance_demo.py</code> to hold a fixed target pose instead of
+          tracking the current pose, and gradually increase \(K_p\) from 10 to 300. Observe
+          how the arm's resistance to hand-guiding changes with stiffness.
+        </li>
+        <li>
+          The Panda supports <em>null-space stiffness</em> — a restoring torque that keeps
+          the elbow in a preferred configuration while the end-effector stays at its target.
+          Look up <code>nullspace_stiffness</code> in the <code>franka_ros2</code>
+          documentation and add it to the compliance demo.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h2>Key Terms</h2>
+      <dl>
+        <dt>Impedance control</dt>
+        <dd>A control strategy that programs the dynamic relationship between external force
+            and end-effector motion, making the robot behave like a virtual mechanical system.</dd>
+        <dt>Stiffness (Kp)</dt>
+        <dd>The spring-like restoring force per unit displacement; high stiffness resists
+            deflection, low stiffness yields to contact.</dd>
+        <dt>Damping (Kd)</dt>
+        <dd>The velocity-dependent resistance that prevents oscillation; critical damping gives
+            the fastest non-oscillatory response.</dd>
+        <dt>Critical damping</dt>
+        <dd>The condition \(K_d = 2\sqrt{MK_p}\) at which the system returns to equilibrium
+            as quickly as possible without overshooting.</dd>
+        <dt>Wrench</dt>
+        <dd>A 6-vector combining a 3D force and a 3D torque — the complete description of the
+            mechanical action on a rigid body.</dd>
+        <dt>Jacobian transpose (J^T)</dt>
+        <dd>Maps a Cartesian wrench applied at the end-effector to the equivalent joint torques;
+            used in Cartesian impedance control.</dd>
+        <dt>Feed-forward torque (tau_ff)</dt>
+        <dd>The gravity and friction compensation torque computed from the robot's dynamic model
+            so the arm remains at its target pose without position error.</dd>
+        <dt>CartesianImpedanceController</dt>
+        <dd>The franka_ros2 controller that implements Cartesian-space impedance control with
+            separate stiffness values for each of the 6 Cartesian DOF.</dd>
+        <dt>Null-space stiffness</dt>
+        <dd>A restoring torque in the redundant null space of the Jacobian that controls the
+            elbow configuration independently of the end-effector pose.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          N. Hogan, "Impedance control: An approach to manipulation — Parts I, II, III,"
+          <em>ASME J. Dyn. Syst., Meas., Control</em>, vol. 107, pp. 1–24, Mar. 1985.
+        </li>
+        <li id="ref2">
+          B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo,
+          <em>Robotics: Modelling, Planning and Control</em>. London: Springer, 2009, ch. 7.
+        </li>
+        <li id="ref3">
+          A. Albu-Schäffer, C. Ott, and G. Hirzinger, "A unified passivity-based control
+          framework for position, torque and impedance control of flexible joint robots,"
+          <em>Int. J. Robotics Research</em>, vol. 26, no. 1, pp. 23–39, 2007.
+        </li>
+        <li id="ref4">
+          C. Ott, R. Mukherjee, and Y. Nakamura, "Unified impedance and admittance control,"
+          in <em>Proc. IEEE ICRA</em>, Anchorage, AK, May 2010, pp. 554–561.
+        </li>
+        <li id="ref5">
+          Franka Robotics GmbH, <em>franka_ros2 CartesianImpedanceController Documentation</em>,
+          2023. [Online]. Available:
+          <a href="https://frankaemika.github.io/docs/">frankaemika.github.io/docs/</a>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch06.html">&larr; Chapter 6: Velocity Control</a>
+    <span class="page-info">Chapter 7 of 10</span>
+    <a href="ch08.html">Chapter 8: MoveIt&nbsp;2 Deep Dive &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

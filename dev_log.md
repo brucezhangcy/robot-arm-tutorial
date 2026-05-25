@@ -229,12 +229,59 @@ Full chapter (same layout as ch01–ch05), 8 logical sections.
 
 ---
 
+## 2026-05-24 — Chapters 7–10 and Appendix A–C (Tutorial Complete)
+
+### New Files
+
+#### ch07.html — Impedance & Torque Control
+- §7.1 What Is Impedance Control? (virtual spring analogy, stiffness vs. damping table)
+- §7.2 Mass-Spring-Damper Model (Figure 7.1 SVG; M·ẍ + B·ẋ + Kx = F_ext)
+- §7.3 Impedance Control Law (joint-space and Cartesian-space forms; Figure 7.2 block diagram; gravity/friction feed-forward)
+- §7.4 Stiffness-Damping Space (critical damping Kd = 2√(M·Kp); Figure 7.3 parameter space plot)
+- §7.5 Implementation on the Panda (CartesianImpedanceController YAML; runtime stiffness update)
+- §7.6 Code Examples (compliance_demo.py — gravity-comp mode; joint_impedance.py — direct torque interface)
+
+#### ch08.html — MoveIt 2 Deep Dive
+- §8.1 Architecture (Figure 8.1 component diagram; move_group, OMPL, FCL, planning scene, ros2_control)
+- §8.2 Planning Scene (Figure 8.2 top-down scene; add_box(); attach_object())
+- §8.3 Motion Planners (Figure 8.3 OMPL RRT tree; planner comparison table: RRTConnect, RRT*, LBKPIECE, PRM, STOMP)
+- §8.4 Motion Constraints (4 constraint types: Joint, Position, Orientation, Visibility; upright_constraint() example)
+- §8.5 Advanced Techniques (pipeline plugins YAML; Pilz PTP/LIN/CIRC; trajectory caching)
+- §8.6 Code Examples (moveit_deep_dive.py — full pipeline with scene + constraints + planner selection)
+
+#### ch09.html — Real Hardware Transition
+- §9.1 Sim vs. Real comparison table (loop rate, comms, noise, collision detection, latency)
+- §9.2 Network Setup (Figure 9.1 hardware comms diagram; static IP config; RT kernel verification)
+- §9.3 Safety Procedures (Figure 9.2 bringup flowchart; E-stop recovery; collision threshold adjustment)
+- §9.4 Hardware Bringup (launch sequence; homing command; Python connection verify)
+- §9.5 Latency & Timing (Figure 9.3 latency bar chart; loop_timer.py measurement tool)
+- §9.6 Code Examples (hw_switch.py — identical code for sim/hardware via --use-sim flag)
+
+#### ch10.html — Pick & Place Capstone
+- §10.1 Task Overview (9-step deterministic sequence)
+- §10.2 FSM Design (Figure 10.1 state diagram: INIT→PRE-GRASP→DESCEND→GRASP→LIFT→TRANSPORT→PLACE→RELEASE→RETRACT→DONE)
+- §10.3 Node Graph (Figure 10.2: pick_place_node, move_group, gripper_node, robot_state_publisher, ros2_control, planning scene, RViz, hardware)
+- §10.4 EEF Trajectory (Figure 10.3 X-Z plane view; Cartesian descents/ascents; straight-line transport)
+- §10.5 Full Implementation (pick_and_place.py — 200-line FSM with gripper actions, Cartesian paths, error handling)
+
+#### appendix.html — Appendices A–C
+- §A: ROS 2 & Python Quick Reference (CLI cheat sheet, minimal node pattern, MoveItPy cheat sheet, common Python patterns table)
+- §B: Panda DH Parameter Table (modified DH for J1–J7 + flange; notes on J4 asymmetric range; FK implementation in Python)
+- §C: Troubleshooting Guide (4 tables: installation, simulation, real hardware, MoveIt 2 planning; diagnostic command block)
+
+---
+
 ## Planned Work
 
 | File | Topic | Key Diagrams |
 |---|---|---|
 | ~~`ch05.html`~~ | ~~Position Control — Cartesian~~ | ✓ Complete (2026-05-16) |
 | ~~`ch06.html`~~ | ~~Velocity Control~~ | ✓ Complete (2026-05-19) |
+| ~~`ch07.html`~~ | ~~Impedance & Torque Control~~ | ✓ Complete (2026-05-24) |
+| ~~`ch08.html`~~ | ~~MoveIt 2 Deep Dive~~ | ✓ Complete (2026-05-24) |
+| ~~`ch09.html`~~ | ~~Real Hardware Transition~~ | ✓ Complete (2026-05-24) |
+| ~~`ch10.html`~~ | ~~Pick & Place Capstone~~ | ✓ Complete (2026-05-24) |
+| ~~`appendix.html`~~ | ~~Appendices A–C~~ | ✓ Complete (2026-05-24) |
 | `ch06.html` | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
 | `ch07.html` | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
 | `ch08.html` | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |

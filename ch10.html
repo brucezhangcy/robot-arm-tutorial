@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 10 · Pick &amp; Place Capstone — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html" class="active">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#task-overview">10.1 Task Overview</a></li>
+          <li><a href="#fsm">10.2 Finite State Machine</a></li>
+          <li><a href="#node-graph">10.3 Full Node Graph</a></li>
+          <li><a href="#trajectory">10.4 EEF Trajectory</a></li>
+          <li><a href="#implementation">10.5 Full Implementation</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 10</span>
+    <h1>Pick &amp; Place Capstone</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      This chapter integrates every concept from the tutorial into a single, working
+      pick-and-place application. You will design a finite state machine, construct the
+      full ROS&nbsp;2 node graph, plan a multi-waypoint end-effector trajectory, and
+      write the complete Python implementation. By the end you will have a program that
+      can reliably pick an object from a known pose, transport it, and set it down at a
+      goal location — in simulation, and (with the Chapter&nbsp;9 checklist) on the
+      real Panda hardware.
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §10.1  Task Overview
+         ════════════════════════════════════════════════ -->
+    <section id="task-overview">
+      <h2>10.1 Task Overview</h2>
+
+      <p>
+        The task: the Panda starts in its home configuration. A cylindrical object sits
+        on a table at a known position. The robot must:
+      </p>
+      <ol>
+        <li>Open the gripper.</li>
+        <li>Move the EEF to a pre-grasp pose (10&nbsp;cm above the object).</li>
+        <li>Descend straight down to the grasp pose.</li>
+        <li>Close the gripper.</li>
+        <li>Lift the object 15&nbsp;cm.</li>
+        <li>Transport it to the goal location (Cartesian straight-line).</li>
+        <li>Lower it to the place pose.</li>
+        <li>Open the gripper to release.</li>
+        <li>Retract upward and return to home.</li>
+      </ol>
+
+      <p>
+        This is a <strong>nine-step</strong> deterministic sequence. We encode it as a
+        finite state machine (FSM) so that each step is atomic and failures can be
+        caught and handled state-by-state.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §10.2  Finite State Machine
+         ════════════════════════════════════════════════ -->
+    <section id="fsm">
+      <h2>10.2 Finite State Machine Design</h2>
+
+      <!-- ── Figure 10.1: FSM state diagram ── -->
+      <figure id="fig10-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 540 295" width="500" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="540" height="295" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr10a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+              <marker id="arr10r" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="270" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Pick-and-Place Finite State Machine</text>
+
+            <!-- State boxes — two columns -->
+            <!-- Left column: states 1-5 at x=60, y=35,80,125,170,215 -->
+            <!-- Right column: states 6-9 + DONE at x=310 -->
+
+            <!-- INIT -->
+            <rect x="55" y="28" width="140" height="28" rx="14" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.8"/>
+            <text x="125" y="46" text-anchor="middle" fill="#1d4ed8" font-weight="600" font-size="10">INIT — open gripper</text>
+
+            <!-- PREGRASP -->
+            <rect x="55" y="72" width="140" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="125" y="90" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">PRE-GRASP — move above</text>
+
+            <!-- GRASP_DESCEND -->
+            <rect x="55" y="116" width="140" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="125" y="134" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">DESCEND — Cartesian down</text>
+
+            <!-- CLOSE_GRIPPER -->
+            <rect x="55" y="160" width="140" height="28" rx="14" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.8"/>
+            <text x="125" y="178" text-anchor="middle" fill="#92400e" font-weight="600" font-size="10">GRASP — close gripper</text>
+
+            <!-- LIFT -->
+            <rect x="55" y="204" width="140" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="125" y="222" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">LIFT — Cartesian up</text>
+
+            <!-- TRANSPORT -->
+            <rect x="330" y="204" width="150" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="405" y="222" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">TRANSPORT — move to goal</text>
+
+            <!-- PLACE_DESCEND -->
+            <rect x="330" y="160" width="150" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="405" y="178" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">PLACE — lower object</text>
+
+            <!-- OPEN_GRIPPER -->
+            <rect x="330" y="116" width="150" height="28" rx="14" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.8"/>
+            <text x="405" y="134" text-anchor="middle" fill="#92400e" font-weight="600" font-size="10">RELEASE — open gripper</text>
+
+            <!-- RETRACT / HOME -->
+            <rect x="330" y="72" width="150" height="28" rx="14" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="405" y="90" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">RETRACT — return home</text>
+
+            <!-- DONE -->
+            <rect x="185" y="28" width="160" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+            <text x="265" y="46" text-anchor="middle" fill="#5b21b6" font-weight="700" font-size="10">DONE</text>
+
+            <!-- ERROR state -->
+            <rect x="225" y="245" width="90" height="28" rx="14" fill="#fde8e8" stroke="#dc2626" stroke-width="1.8"/>
+            <text x="270" y="263" text-anchor="middle" fill="#991b1b" font-weight="600" font-size="10">ERROR</text>
+
+            <!-- Arrows: left column (downward) -->
+            <line x1="125" y1="56"  x2="125" y2="70"  stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <line x1="125" y1="100" x2="125" y2="114" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <line x1="125" y1="144" x2="125" y2="158" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <line x1="125" y1="188" x2="125" y2="202" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+
+            <!-- LIFT → TRANSPORT (right) -->
+            <line x1="195" y1="218" x2="328" y2="218" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+
+            <!-- Right column (upward from TRANSPORT) -->
+            <line x1="405" y1="202" x2="405" y2="190" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <line x1="405" y1="158" x2="405" y2="146" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <line x1="405" y1="114" x2="405" y2="102" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+
+            <!-- RETRACT → DONE -->
+            <line x1="330" y1="86"  x2="347" y2="86" stroke="#555" stroke-width="1" opacity="0"/>
+            <line x1="345" y1="86"  x2="348" y2="42" stroke="#555" stroke-width="1.5"/>
+            <line x1="348" y1="42"  x2="347" y2="42" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+
+            <!-- Error arrows from any state (simplified: single dashed line from center) -->
+            <line x1="195" y1="130" x2="225" y2="250" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arr10r)"/>
+            <text x="200" y="200" fill="#c0392b" font-size="7">on failure</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;10.1.</strong> Pick-and-place finite state machine. States
+          progress linearly under success. Any state can transition to ERROR on failure
+          (planning failure, gripper fault, or protective stop). The ERROR handler stops
+          all motion and logs the failing state.
+        </figcaption>
+      </figure>
+
+      <p>
+        Each state is a Python method that returns <code>True</code> (success, advance to
+        next state) or <code>False</code> (failure, enter ERROR state). The main loop
+        iterates the state list until DONE or ERROR is reached.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §10.3  Full Node Graph
+         ════════════════════════════════════════════════ -->
+    <section id="node-graph">
+      <h2>10.3 Full Node Graph</h2>
+
+      <!-- ── Figure 10.2: node graph ── -->
+      <figure id="fig10-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 560 210" width="520" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="560" height="210" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr10b" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="280" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Complete Pick-and-Place Node Graph</text>
+
+            <!-- pick_place_node (center) -->
+            <rect x="185" y="78" width="180" height="50" rx="4" fill="#e8f0fe" stroke="#3b82f6" stroke-width="2"/>
+            <text x="275" y="99" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="11">pick_place_node</text>
+            <text x="275" y="114" text-anchor="middle" fill="#1d4ed8" font-size="8">FSM controller (Python)</text>
+
+            <!-- move_group -->
+            <rect x="20" y="20" width="130" height="36" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="85" y="37" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">move_group</text>
+            <text x="85" y="50" text-anchor="middle" fill="#15803d" font-size="8">MoveIt 2 planning</text>
+            <line x1="150" y1="38" x2="183" y2="95" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- franka_gripper_node -->
+            <rect x="20" y="80" width="130" height="36" rx="3" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+            <text x="85" y="97" text-anchor="middle" fill="#92400e" font-weight="600" font-size="10">gripper_node</text>
+            <text x="85" y="110" text-anchor="middle" fill="#92400e" font-size="8">franka_gripper</text>
+            <line x1="150" y1="98" x2="183" y2="103" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- robot_state_publisher -->
+            <rect x="20" y="140" width="130" height="36" rx="3" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+            <text x="85" y="157" text-anchor="middle" fill="#5b21b6" font-weight="600" font-size="10">robot_state_pub</text>
+            <text x="85" y="170" text-anchor="middle" fill="#5b21b6" font-size="8">TF + joint states</text>
+            <line x1="150" y1="158" x2="183" y2="120" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- ros2_control / JTC -->
+            <rect x="400" y="20" width="145" height="36" rx="3" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="472" y="37" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">ros2_control</text>
+            <text x="472" y="50" text-anchor="middle" fill="#15803d" font-size="8">JointTrajectoryController</text>
+            <line x1="365" y1="95" x2="398" y2="38" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- planning scene monitor -->
+            <rect x="400" y="80" width="145" height="36" rx="3" fill="#fde8e8" stroke="#dc2626" stroke-width="1.5"/>
+            <text x="472" y="97" text-anchor="middle" fill="#991b1b" font-weight="600" font-size="10">Planning Scene</text>
+            <text x="472" y="110" text-anchor="middle" fill="#991b1b" font-size="8">collision objects</text>
+            <line x1="365" y1="103" x2="398" y2="98" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- RViz -->
+            <rect x="400" y="140" width="145" height="36" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+            <text x="472" y="157" text-anchor="middle" fill="#9d174d" font-weight="600" font-size="10">RViz 2</text>
+            <text x="472" y="170" text-anchor="middle" fill="#9d174d" font-size="8">monitoring &amp; debug</text>
+            <line x1="365" y1="112" x2="398" y2="150" stroke="#555" stroke-width="1.3" marker-end="url(#arr10b)"/>
+
+            <!-- Topic labels on arrows -->
+            <text x="160" y="65" fill="#555" font-size="7">plan/execute</text>
+            <text x="160" y="100" fill="#555" font-size="7">grasp action</text>
+            <text x="160" y="140" fill="#555" font-size="7">/joint_states</text>
+            <text x="370" y="60" fill="#555" font-size="7">trajectory</text>
+            <text x="370" y="96" fill="#555" font-size="7">scene update</text>
+            <text x="370" y="135" fill="#555" font-size="7">TF + state</text>
+
+            <!-- Panda robot hardware (bottom) -->
+            <rect x="185" y="170" width="180" height="32" rx="3" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+            <text x="275" y="187" text-anchor="middle" fill="#374151" font-weight="600" font-size="10">Panda Hardware / Gazebo</text>
+            <text x="275" y="198" text-anchor="middle" fill="#6b7280" font-size="7">FCI or sim interface</text>
+            <line x1="275" y1="128" x2="275" y2="168" stroke="#555" stroke-width="1.5" marker-end="url(#arr10b)"/>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;10.2.</strong> Complete node graph for the pick-and-place
+          capstone. The <code>pick_place_node</code> orchestrates the FSM by calling
+          MoveIt&nbsp;2 for planning, sending gripper actions, and monitoring the planning
+          scene. All nodes communicate via standard ROS&nbsp;2 topics and services.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §10.4  EEF Trajectory
+         ════════════════════════════════════════════════ -->
+    <section id="trajectory">
+      <h2>10.4 EEF Trajectory</h2>
+
+      <!-- ── Figure 10.3: EEF trajectory ── -->
+      <figure id="fig10-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 520 240" width="480" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="520" height="240" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr10c" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#0057b8"/>
+              </marker>
+              <marker id="arr10g" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#22c55e"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="260" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">EEF Trajectory — Side View (X-Z Plane)</text>
+
+            <!-- Ground / table surface -->
+            <line x1="30" y1="200" x2="490" y2="200" stroke="#9ca3af" stroke-width="1.5"/>
+            <text x="260" y="215" text-anchor="middle" fill="#6b7280" font-size="8">Table surface (z = 0)</text>
+
+            <!-- Object at pick location (left) -->
+            <rect x="78" y="165" width="24" height="35" rx="3" fill="#fbbf24" stroke="#d97706" stroke-width="1.5"/>
+            <text x="90" y="160" text-anchor="middle" fill="#d97706" font-size="8">Object</text>
+
+            <!-- Goal location (right) -->
+            <rect x="358" y="175" width="24" height="25" rx="2" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="3,2"/>
+            <text x="370" y="170" text-anchor="middle" fill="#6b7280" font-size="8">Goal</text>
+
+            <!-- Waypoints and trajectory path -->
+            <!-- 1: HOME -->
+            <circle cx="50" cy="100" r="6" fill="#22c55e" stroke="white" stroke-width="2"/>
+            <text x="50" y="90" text-anchor="middle" fill="#15803d" font-size="7" font-weight="600">HOME</text>
+
+            <!-- 2: PRE-GRASP (above pick) -->
+            <circle cx="90" cy="100" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="90" y="90" text-anchor="middle" fill="#0057b8" font-size="7">Pre-grasp</text>
+
+            <!-- 3: GRASP (at object) -->
+            <circle cx="90" cy="163" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="110" y="168" fill="#0057b8" font-size="7">Grasp</text>
+
+            <!-- 4: LIFT -->
+            <circle cx="90" cy="120" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="110" y="118" fill="#0057b8" font-size="7">Lift</text>
+
+            <!-- 5: TRANSPORT (horizontal) -->
+            <circle cx="370" cy="120" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="370" y="110" text-anchor="middle" fill="#0057b8" font-size="7">Transport</text>
+
+            <!-- 6: PLACE -->
+            <circle cx="370" cy="173" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="390" y="176" fill="#0057b8" font-size="7">Place</text>
+
+            <!-- 7: RETRACT (above goal) -->
+            <circle cx="370" cy="100" r="5" fill="#0057b8" stroke="white" stroke-width="1.5"/>
+            <text x="390" y="98" fill="#0057b8" font-size="7">Retract</text>
+
+            <!-- 8: HOME again -->
+            <circle cx="440" cy="100" r="6" fill="#22c55e" stroke="white" stroke-width="2"/>
+            <text x="440" y="90" text-anchor="middle" fill="#15803d" font-size="7" font-weight="600">HOME</text>
+
+            <!-- Trajectory arrows -->
+            <!-- HOME → PRE-GRASP (MoveIt PTP) -->
+            <line x1="56" y1="100" x2="83" y2="100" stroke="#0057b8" stroke-width="2" marker-end="url(#arr10c)"/>
+            <!-- PRE-GRASP → GRASP (Cartesian down) -->
+            <line x1="90" y1="106" x2="90" y2="157" stroke="#0057b8" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr10c)"/>
+            <!-- GRASP → LIFT (Cartesian up) -->
+            <line x1="90" y1="157" x2="90" y2="126" stroke="#c0392b" stroke-width="2.5" marker-end="url(#arr10c)"/>
+            <!-- LIFT → TRANSPORT (Cartesian straight) -->
+            <line x1="96" y1="120" x2="363" y2="120" stroke="#0057b8" stroke-width="2" marker-end="url(#arr10c)"/>
+            <!-- TRANSPORT → PLACE (Cartesian down) -->
+            <line x1="370" y1="126" x2="370" y2="167" stroke="#0057b8" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr10c)"/>
+            <!-- PLACE → RETRACT (Cartesian up) -->
+            <line x1="370" y1="167" x2="370" y2="106" stroke="#c0392b" stroke-width="2.5" marker-end="url(#arr10c)"/>
+            <!-- RETRACT → HOME -->
+            <line x1="376" y1="100" x2="433" y2="100" stroke="#0057b8" stroke-width="2" marker-end="url(#arr10c)"/>
+
+            <!-- Legend -->
+            <line x1="30" y1="228" x2="55" y2="228" stroke="#0057b8" stroke-width="2"/>
+            <text x="60" y="232" fill="#555" font-size="8">MoveIt 2 plan</text>
+            <line x1="130" y1="228" x2="155" y2="228" stroke="#0057b8" stroke-width="2" stroke-dasharray="5,3"/>
+            <text x="160" y="232" fill="#555" font-size="8">Cartesian straight-line</text>
+            <line x1="280" y1="228" x2="305" y2="228" stroke="#c0392b" stroke-width="2.5"/>
+            <text x="310" y="232" fill="#555" font-size="8">Lift / retract (after grasp)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;10.3.</strong> End-effector trajectory in the X-Z plane.
+          Dashed vertical segments are Cartesian straight-line descents and ascents.
+          The long horizontal segment is a Cartesian straight-line transport.
+          Curved (MoveIt&nbsp;2-planned) segments connect home to the pre-grasp approach
+          and the retract pose back to home.
+        </figcaption>
+      </figure>
+
+      <p>
+        The critical design choice: <strong>all vertical and horizontal segments are
+        Cartesian straight-lines</strong> (computed with <code>compute_cartesian_path</code>
+        from Chapter&nbsp;5). This ensures the object moves in a predictable path — important
+        when working near other objects on a cluttered table. The initial HOME→PRE-GRASP
+        move and the final RETRACT→HOME move are left to the OMPL planner because no
+        object is held and path shape does not matter.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §10.5  Full Implementation
+         ════════════════════════════════════════════════ -->
+    <section id="implementation">
+      <h2>10.5 Full Implementation</h2>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""
+pick_and_place.py — complete FSM-based pick-and-place capstone.
+
+Assumes:
+  - franka_ros2 and MoveIt 2 are running (sim or real hardware)
+  - Franka Hand gripper controller is active
+  - Object is at PICK_POSE; goal is PLACE_POSE
+"""
+import enum
+import time
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from geometry_msgs.msg import PoseStamped
+import moveit_py
+from moveit.planning import MoveItPy, PlanRequestParameters
+from franka_msgs.action import Grasp, Move as GripperMove
+
+
+# ── Task parameters ──────────────────────────────────────────────────────────
+PICK_X, PICK_Y, PICK_Z    = 0.40,  0.00, 0.12   # object centre (m)
+PLACE_X, PLACE_Y, PLACE_Z = 0.40,  0.30, 0.12   # goal centre (m)
+
+APPROACH_HEIGHT = 0.10   # m above pick/place pose for pre-grasp / retract
+LIFT_HEIGHT     = 0.15   # m to lift after grasping
+
+GRIPPER_WIDTH_OPEN  = 0.08   # m
+GRIPPER_WIDTH_CLOSE = 0.03   # m — adjust to object diameter
+GRIPPER_FORCE       = 40.0   # N
+
+VEL_SCALE  = 0.25
+ACC_SCALE  = 0.10
+CART_STEP  = 0.005   # m — interpolation step for Cartesian paths
+MIN_FRAC   = 0.95    # minimum fraction for compute_cartesian_path
+
+
+class State(enum.Enum):
+    INIT        = 0
+    PRE_GRASP   = 1
+    DESCEND     = 2
+    GRASP       = 3
+    LIFT        = 4
+    TRANSPORT   = 5
+    PLACE       = 6
+    RELEASE     = 7
+    RETRACT     = 8
+    DONE        = 9
+    ERROR       = 10
+
+
+# ── Helper: build a PoseStamped ───────────────────────────────────────────────
+def _pose(x: float, y: float, z: float,
+          qx: float = 1.0, qy: float = 0.0,
+          qz: float = 0.0, qw: float = 0.0) -> PoseStamped:
+    p = PoseStamped()
+    p.header.frame_id     = 'panda_link0'
+    p.pose.position.x     = x
+    p.pose.position.y     = y
+    p.pose.position.z     = z
+    p.pose.orientation.x  = qx
+    p.pose.orientation.y  = qy
+    p.pose.orientation.z  = qz
+    p.pose.orientation.w  = qw
+    return p
+
+
+# ── Main node ─────────────────────────────────────────────────────────────────
+class PickAndPlaceNode(Node):
+    def __init__(self):
+        super().__init__('pick_and_place')
+
+        self.moveit: MoveItPy = moveit_py.MoveItPy(
+            node_name='pick_and_place')
+        self.arm  = self.moveit.get_planning_component('panda_arm')
+        self.hand = self.moveit.get_planning_component('panda_hand')
+
+        self._grasp_client = ActionClient(
+            self, Grasp, '/fr3_gripper/grasp')
+        self._move_client  = ActionClient(
+            self, GripperMove, '/fr3_gripper/move')
+
+        self.get_logger().info('Pick-and-place node ready.')
+
+    # ── Gripper helpers ───────────────────────────────────────────────────────
+    def _gripper_move(self, width: float, speed: float = 0.05) -> bool:
+        goal        = GripperMove.Goal()
+        goal.width  = width
+        goal.speed  = speed
+        self._move_client.wait_for_server(timeout_sec=5.0)
+        future = self._move_client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
+        result_future = future.result().get_result_async()
+        rclpy.spin_until_future_complete(self, result_future, timeout_sec=10.0)
+        return result_future.result().result.success
+
+    def _gripper_grasp(self, width: float, force: float) -> bool:
+        goal           = Grasp.Goal()
+        goal.width     = width
+        goal.speed     = 0.05
+        goal.force     = force
+        goal.epsilon.inner = 0.005
+        goal.epsilon.outer = 0.005
+        self._grasp_client.wait_for_server(timeout_sec=5.0)
+        future = self._grasp_client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=15.0)
+        result_future = future.result().get_result_async()
+        rclpy.spin_until_future_complete(self, result_future, timeout_sec=15.0)
+        return result_future.result().result.success
+
+    # ── Arm helpers ───────────────────────────────────────────────────────────
+    def _plan_to_pose(self, target: PoseStamped) -> bool:
+        self.arm.set_start_state_to_current_state()
+        self.arm.set_goal_state(
+            pose_stamped_msg=target, pose_link='panda_hand')
+        params = PlanRequestParameters(self.moveit, 'panda_arm')
+        params.max_velocity_scaling_factor     = VEL_SCALE
+        params.max_acceleration_scaling_factor = ACC_SCALE
+        plan = self.arm.plan(single_plan_parameters=params)
+        if not plan:
+            return False
+        return bool(self.moveit.execute(plan.trajectory, controllers=[]))
+
+    def _cartesian_move(self, waypoints: list) -> bool:
+        self.arm.set_start_state_to_current_state()
+        plan, fraction = self.arm.compute_cartesian_path(
+            waypoints=waypoints,
+            max_step=CART_STEP,
+            jump_threshold=0.0,
+        )
+        if fraction < MIN_FRAC:
+            self.get_logger().warn(
+                f'Cartesian path fraction {fraction:.2f} < {MIN_FRAC}')
+            return False
+        return bool(self.moveit.execute(plan.trajectory, controllers=[]))
+
+    # ── FSM state handlers ────────────────────────────────────────────────────
+    def state_init(self) -> bool:
+        self.get_logger().info('State: INIT — opening gripper.')
+        return self._gripper_move(width=GRIPPER_WIDTH_OPEN)
+
+    def state_pre_grasp(self) -> bool:
+        self.get_logger().info('State: PRE-GRASP — moving above object.')
+        target = _pose(PICK_X, PICK_Y, PICK_Z + APPROACH_HEIGHT)
+        return self._plan_to_pose(target)
+
+    def state_descend(self) -> bool:
+        self.get_logger().info('State: DESCEND — Cartesian straight down.')
+        return self._cartesian_move([_pose(PICK_X, PICK_Y, PICK_Z)])
+
+    def state_grasp(self) -> bool:
+        self.get_logger().info('State: GRASP — closing gripper.')
+        return self._gripper_grasp(GRIPPER_WIDTH_CLOSE, GRIPPER_FORCE)
+
+    def state_lift(self) -> bool:
+        self.get_logger().info('State: LIFT — Cartesian straight up.')
+        return self._cartesian_move(
+            [_pose(PICK_X, PICK_Y, PICK_Z + LIFT_HEIGHT)])
+
+    def state_transport(self) -> bool:
+        self.get_logger().info('State: TRANSPORT — Cartesian straight to goal.')
+        return self._cartesian_move(
+            [_pose(PLACE_X, PLACE_Y, PLACE_Z + LIFT_HEIGHT)])
+
+    def state_place(self) -> bool:
+        self.get_logger().info('State: PLACE — lowering object.')
+        return self._cartesian_move([_pose(PLACE_X, PLACE_Y, PLACE_Z)])
+
+    def state_release(self) -> bool:
+        self.get_logger().info('State: RELEASE — opening gripper.')
+        return self._gripper_move(width=GRIPPER_WIDTH_OPEN)
+
+    def state_retract(self) -> bool:
+        self.get_logger().info('State: RETRACT — returning to home.')
+        return self._cartesian_move(
+            [_pose(PLACE_X, PLACE_Y, PLACE_Z + APPROACH_HEIGHT)])
+
+    # ── FSM runner ────────────────────────────────────────────────────────────
+    def run(self) -> None:
+        handlers = [
+            (State.INIT,      self.state_init),
+            (State.PRE_GRASP, self.state_pre_grasp),
+            (State.DESCEND,   self.state_descend),
+            (State.GRASP,     self.state_grasp),
+            (State.LIFT,      self.state_lift),
+            (State.TRANSPORT, self.state_transport),
+            (State.PLACE,     self.state_place),
+            (State.RELEASE,   self.state_release),
+            (State.RETRACT,   self.state_retract),
+        ]
+
+        current = State.INIT
+        for state, handler in handlers:
+            current = state
+            self.get_logger().info(f'--- Entering state: {state.name} ---')
+            success = handler()
+            if not success:
+                self.get_logger().error(
+                    f'State {state.name} failed. Entering ERROR.')
+                current = State.ERROR
+                break
+            time.sleep(0.2)   # brief pause between states
+
+        if current != State.ERROR:
+            current = State.DONE
+            self.get_logger().info('=== Pick-and-place DONE ===')
+        else:
+            self.get_logger().error('=== Pick-and-place FAILED ===')
+
+
+def main():
+    rclpy.init()
+    node = PickAndPlaceNode()
+    rclpy.spin_once(node, timeout_sec=2.0)   # allow discovery
+    node.run()
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <div class="callout callout-warning">
+        <strong>Before running on real hardware:</strong>
+        complete the Chapter&nbsp;9 safety checklist, set <code>VEL_SCALE = 0.05</code>
+        for the first run, and keep your hand on the E-stop. Increase speed only after
+        confirming the full sequence in simulation.
+      </div>
+    </section>
+
+    <!-- Exercises -->
+    <section id="exercises" class="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Add a <code>VERIFY_GRASP</code> state between GRASP and LIFT. Read the gripper
+          finger positions from <code>/franka_gripper/joint_states</code> and confirm
+          that the gripper did not close past a minimum width (which would indicate it
+          slipped past the object). If the check fails, transition to ERROR.
+        </li>
+        <li>
+          Replace the hardcoded <code>PICK_POSE</code> with a ROS&nbsp;2 topic subscriber
+          that receives the object pose from a perception node (or a ROS&nbsp;2 parameter).
+          Add a new <code>DETECT</code> state at the beginning that waits for the first
+          pose message before advancing.
+        </li>
+        <li>
+          The transport segment is a single Cartesian straight-line at constant height.
+          In a cluttered scene this might not be collision-free. Replace the transport with
+          an OMPL-planned move (using <code>_plan_to_pose</code>) and add the table and any
+          obstacles to the planning scene. Compare the resulting path to the straight-line.
+        </li>
+        <li>
+          Wrap the FSM in a ROS&nbsp;2 action server so that external nodes can trigger
+          a pick-and-place cycle by sending a goal with <code>pick_pose</code> and
+          <code>place_pose</code> fields, and receive feedback after each state transition.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h2>Key Terms</h2>
+      <dl>
+        <dt>Finite state machine (FSM)</dt>
+        <dd>A control structure that models a system as a set of discrete states with
+            transitions triggered by events or conditions; here, each state is one phase
+            of the pick-and-place sequence.</dd>
+        <dt>Pre-grasp pose</dt>
+        <dd>A pose above the object, reached by a planned (unconstrained) move before the
+            Cartesian descent; avoids hitting the object during the approach.</dd>
+        <dt>Cartesian straight-line path</dt>
+        <dd>A path in which the end-effector moves in a straight line in Cartesian space,
+            computed by <code>compute_cartesian_path</code>; critical for vertical pick and
+            place descents to avoid dragging the object sideways.</dd>
+        <dt>Grasp action</dt>
+        <dd>The franka_gripper action that closes the fingers to a target width with a
+            target force and confirms whether an object was gripped.</dd>
+        <dt>Path fraction</dt>
+        <dd>The proportion of the requested Cartesian waypoints that could be reached
+            collision-free; a fraction below the threshold (e.g., 0.95) causes the move
+            to be aborted.</dd>
+        <dt>Retract pose</dt>
+        <dd>A pose above the place location, reached after releasing the object; lifts
+            the gripper clear before the final return-to-home move.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          R. A. Brooks, "A robust layered control system for a mobile robot,"
+          <em>IEEE J. Robotics and Automation</em>, vol. 2, no. 1, pp. 14–23, 1986.
+        </li>
+        <li id="ref2">
+          E. Todorov, T. Erez, and Y. Tassa, "MuJoCo: A physics engine for model-based
+          control," in <em>Proc. IEEE/RSJ IROS</em>, 2012, pp. 5026–5033.
+        </li>
+        <li id="ref3">
+          D. Coleman, I. Sucan, S. Chitta, and N. Correll, "Reducing the Barrier to Entry
+          of Complex Robotic Software: a MoveIt! Case Study,"
+          <em>Journal of Software Engineering for Robotics</em>, vol. 5, no. 1, 2014.
+        </li>
+        <li id="ref4">
+          A. Bicchi and V. Kumar, "Robotic grasping and contact: A review," in
+          <em>Proc. IEEE ICRA</em>, San Francisco, CA, Apr. 2000, pp. 348–353.
+        </li>
+        <li id="ref5">
+          Franka Robotics GmbH, <em>franka_ros2 Gripper Interface Documentation</em>,
+          2023. [Online]. Available:
+          <a href="https://frankaemika.github.io/docs/">frankaemika.github.io/docs/</a>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch09.html">&larr; Chapter 9: Real Hardware</a>
+    <span class="page-info">Chapter 10 of 10</span>
+    <a href="appendix.html">Appendices &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

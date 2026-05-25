@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9 · Real Hardware Transition — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html" class="active">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Chapter</div>
+        <ul>
+          <li><a href="#sim-vs-real">9.1 Simulation vs. Real Hardware</a></li>
+          <li><a href="#network-setup">9.2 Network &amp; Communication</a></li>
+          <li><a href="#safety">9.3 Safety Procedures</a></li>
+          <li><a href="#bringup">9.4 Hardware Bringup</a></li>
+          <li><a href="#latency">9.5 Latency &amp; Timing</a></li>
+          <li><a href="#code">9.6 Code Examples</a></li>
+          <li><a href="#exercises">Exercises</a></li>
+          <li><a href="#references">References</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Chapter 9</span>
+    <h1>Real Hardware Transition</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <div class="chapter-abstract">
+      Every chapter to this point could be completed entirely in simulation. This chapter
+      bridges the gap to physical hardware. You will learn what changes when the Gazebo
+      physics engine is replaced by a real Panda arm: network latency, real-time kernel
+      requirements, E-stop procedures, and the subtle but important ways the FCI differs
+      from the simulation interface. The transition checklist in this chapter is a practical
+      reference to return to before every hardware session.
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §9.1  Simulation vs. Real Hardware
+         ════════════════════════════════════════════════ -->
+    <section id="sim-vs-real">
+      <h2>9.1 Simulation vs. Real Hardware</h2>
+
+      <p>
+        Gazebo faithfully emulates the ROS&nbsp;2 interface so that the same Python code
+        runs in simulation and on hardware. However, several important differences emerge
+        when you plug in the real arm:
+      </p>
+
+      <table>
+        <caption>Table&nbsp;9.1 — Key differences between simulation and real hardware</caption>
+        <thead>
+          <tr>
+            <th>Aspect</th>
+            <th>Simulation (Gazebo)</th>
+            <th>Real Panda Hardware</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Control loop rate</td>
+            <td>1 kHz (software-limited, may drop under load)</td>
+            <td>1 kHz (hard real-time, PREEMPT_RT kernel required)</td>
+          </tr>
+          <tr>
+            <td>Communication</td>
+            <td>Shared memory (same machine)</td>
+            <td>1&nbsp;Gbps Ethernet, dedicated NIC, FCI protocol</td>
+          </tr>
+          <tr>
+            <td>Gravity compensation</td>
+            <td>Perfect model; no sag</td>
+            <td>Real dynamics; slight drift possible if model is imperfect</td>
+          </tr>
+          <tr>
+            <td>Joint noise</td>
+            <td>None (ideal encoder)</td>
+            <td>Encoder quantisation noise at 12-bit resolution</td>
+          </tr>
+          <tr>
+            <td>Collision detection</td>
+            <td>Gazebo physics; ignores franka_ros2 reflexes</td>
+            <td>Hardware reflexes: 10&nbsp;N contact threshold, joint torque limits</td>
+          </tr>
+          <tr>
+            <td>Safety interlocks</td>
+            <td>None</td>
+            <td>E-stop button, deadman pedal, software watchdog</td>
+          </tr>
+          <tr>
+            <td>Latency (round-trip)</td>
+            <td>&lt; 0.1&nbsp;ms</td>
+            <td>0.3–0.6&nbsp;ms over dedicated Ethernet</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §9.2  Network & Communication
+         ════════════════════════════════════════════════ -->
+    <section id="network-setup">
+      <h2>9.2 Network &amp; Communication Setup</h2>
+
+      <p>
+        The Panda's Franka Control Interface (FCI) requires a direct, dedicated Gigabit
+        Ethernet connection between the robot's base unit and the control PC. The FCI uses
+        a proprietary UDP-based protocol to exchange 1&nbsp;kHz control packets; sharing
+        that NIC with regular network traffic introduces jitter that triggers the robot's
+        watchdog and causes protective stops.
+      </p>
+
+      <!-- ── Figure 9.1: hardware communication diagram ── -->
+      <figure id="fig9-1">
+        <div class="figure-inner">
+          <svg viewBox="0 0 520 165" width="480" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="520" height="165" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr9a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+              <marker id="arr9b" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#c0392b"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="260" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Hardware Communication Architecture</text>
+
+            <!-- Control PC -->
+            <rect x="20" y="55" width="120" height="70" rx="4" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.8"/>
+            <text x="80" y="76" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="11">Control PC</text>
+            <text x="80" y="90" text-anchor="middle" fill="#1d4ed8" font-size="8">PREEMPT_RT kernel</text>
+            <text x="80" y="102" text-anchor="middle" fill="#1d4ed8" font-size="8">franka_ros2 + ROS 2</text>
+            <text x="80" y="114" text-anchor="middle" fill="#1d4ed8" font-size="8">Dedicated GbE NIC</text>
+
+            <!-- Panda base unit -->
+            <rect x="210" y="55" width="130" height="70" rx="4" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.8"/>
+            <text x="275" y="76" text-anchor="middle" fill="#15803d" font-weight="700" font-size="11">Panda Base</text>
+            <text x="275" y="90" text-anchor="middle" fill="#15803d" font-size="8">Franka Control Unit</text>
+            <text x="275" y="102" text-anchor="middle" fill="#15803d" font-size="8">FCI server (UDP 1 kHz)</text>
+            <text x="275" y="114" text-anchor="middle" fill="#15803d" font-size="8">Arm + torque sensors</text>
+
+            <!-- Robot arm (abstract) -->
+            <rect x="410" y="68" width="90" height="44" rx="4" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.8"/>
+            <text x="455" y="87" text-anchor="middle" fill="#92400e" font-weight="700" font-size="11">Arm Links</text>
+            <text x="455" y="100" text-anchor="middle" fill="#92400e" font-size="8">7 joints, EEF</text>
+
+            <!-- Dedicated Ethernet link (primary) -->
+            <line x1="140" y1="90" x2="208" y2="90" stroke="#0057b8" stroke-width="3" marker-end="url(#arr9a)"/>
+            <text x="174" y="83" text-anchor="middle" fill="#0057b8" font-size="8" font-weight="600">1 GbE</text>
+            <text x="174" y="94" text-anchor="middle" fill="#0057b8" font-size="7">dedicated NIC</text>
+
+            <!-- Internal bus to arm -->
+            <line x1="340" y1="90" x2="408" y2="90" stroke="#555" stroke-width="2" marker-end="url(#arr9a)"/>
+            <text x="374" y="83" text-anchor="middle" fill="#555" font-size="8">EtherCAT</text>
+            <text x="374" y="93" text-anchor="middle" fill="#555" font-size="7">internal bus</text>
+
+            <!-- E-stop warning -->
+            <rect x="20" y="140" width="480" height="18" rx="2" fill="rgba(220,38,38,0.08)" stroke="#dc2626" stroke-width="1"/>
+            <text x="260" y="153" text-anchor="middle" fill="#991b1b" font-size="8" font-weight="600">Do NOT share the FCI NIC with any other network traffic — jitter causes protective stops.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;9.1.</strong> Hardware communication architecture. The control
+          PC connects to the Panda base unit via a dedicated Gigabit Ethernet NIC running
+          the FCI protocol at 1&nbsp;kHz. The base unit communicates with the arm links over
+          an internal EtherCAT bus.
+        </figcaption>
+      </figure>
+
+      <h3>9.2.1 Network Configuration</h3>
+
+      <pre><code class="language-bash"># Assign a static IP to the FCI NIC (adapt interface name as needed)
+sudo ip addr add 192.168.1.100/24 dev eth0
+sudo ip link set eth0 up
+
+# Set maximum transmission unit to 1500 (standard Ethernet)
+sudo ip link set eth0 mtu 1500
+
+# Verify link speed is 1000 Mbps (gigabit)
+ethtool eth0 | grep -i speed
+
+# Ping the robot (default FCI IP is 192.168.1.1)
+ping -c 4 192.168.1.1</code></pre>
+
+      <h3>9.2.2 Real-Time Kernel Verification</h3>
+
+      <pre><code class="language-bash"># Confirm the PREEMPT_RT kernel is running
+uname -r
+# Expected output contains "rt" e.g.: 5.15.0-91-realtime
+
+# Check scheduling policy of the franka_ros2 process
+chrt -p $(pgrep -f franka_ros2)
+# Should show: scheduling policy: SCHED_FIFO, priority: 80–90
+
+# Monitor latency histogram (run for ~60 s, then Ctrl+C)
+sudo cyclictest -l 1000000 -m -n -p 90 -t 1 --histogram=200</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §9.3  Safety Procedures
+         ════════════════════════════════════════════════ -->
+    <section id="safety">
+      <h2>9.3 Safety Procedures</h2>
+
+      <!-- ── Figure 9.2: safety flowchart ── -->
+      <figure id="fig9-2">
+        <div class="figure-inner">
+          <svg viewBox="0 0 420 310" width="390" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="420" height="310" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr9c" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="210" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Hardware Bringup Safety Checklist</text>
+
+            <!-- Step boxes (top to bottom) -->
+            <!-- Step 1 -->
+            <rect x="80" y="28" width="260" height="34" rx="4" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="210" y="43" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">1. Clear the workspace</text>
+            <text x="210" y="56" text-anchor="middle" fill="#15803d" font-size="8">No people or objects in robot reach envelope</text>
+            <line x1="210" y1="62" x2="210" y2="76" stroke="#555" stroke-width="1.5" marker-end="url(#arr9c)"/>
+
+            <!-- Step 2 -->
+            <rect x="80" y="76" width="260" height="34" rx="4" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="210" y="91" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">2. Connect E-stop</text>
+            <text x="210" y="104" text-anchor="middle" fill="#15803d" font-size="8">Verify E-stop button is within reach and functional</text>
+            <line x1="210" y1="110" x2="210" y2="124" stroke="#555" stroke-width="1.5" marker-end="url(#arr9c)"/>
+
+            <!-- Step 3 -->
+            <rect x="80" y="124" width="260" height="34" rx="4" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+            <text x="210" y="139" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">3. Power on &amp; verify FCI link</text>
+            <text x="210" y="152" text-anchor="middle" fill="#15803d" font-size="8">Ping robot, confirm 1 GbE link, start franka_ros2</text>
+            <line x1="210" y1="158" x2="210" y2="172" stroke="#555" stroke-width="1.5" marker-end="url(#arr9c)"/>
+
+            <!-- Step 4 -->
+            <rect x="80" y="172" width="260" height="34" rx="4" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+            <text x="210" y="187" text-anchor="middle" fill="#92400e" font-weight="600" font-size="10">4. Run with low stiffness first</text>
+            <text x="210" y="200" text-anchor="middle" fill="#92400e" font-size="8">Start with Kp &lt; 50 N/m; observe behavior</text>
+            <line x1="210" y1="206" x2="210" y2="220" stroke="#555" stroke-width="1.5" marker-end="url(#arr9c)"/>
+
+            <!-- Step 5 -->
+            <rect x="80" y="220" width="260" height="34" rx="4" fill="#fde8e8" stroke="#dc2626" stroke-width="1.5"/>
+            <text x="210" y="235" text-anchor="middle" fill="#991b1b" font-weight="600" font-size="10">5. Increase speed / stiffness gradually</text>
+            <text x="210" y="248" text-anchor="middle" fill="#991b1b" font-size="8">Never jump to full parameters without prior testing</text>
+            <line x1="210" y1="254" x2="210" y2="268" stroke="#555" stroke-width="1.5" marker-end="url(#arr9c)"/>
+
+            <!-- Step 6 -->
+            <rect x="80" y="268" width="260" height="34" rx="4" fill="#e8f0fe" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="210" y="283" text-anchor="middle" fill="#1d4ed8" font-weight="600" font-size="10">6. Power off &amp; document</text>
+            <text x="210" y="296" text-anchor="middle" fill="#1d4ed8" font-size="8">Stop controllers, move to home, power off safely</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;9.2.</strong> Hardware bringup safety checklist. Follow the
+          steps in order. Never skip the low-stiffness test phase — a misconfigured
+          parameter can cause fast, unpredictable motion at full torque.
+        </figcaption>
+      </figure>
+
+      <div class="callout callout-warning">
+        <strong>Emergency stop.</strong>
+        The Panda E-stop cuts motor power within 1&nbsp;ms. After an E-stop event, the robot
+        enters an error state. Recovery requires: (1) release the E-stop, (2) call
+        <code>ros2 service call /error_recovery franka_msgs/srv/ErrorRecovery</code>,
+        (3) re-activate controllers via <code>ros2 control switch_controllers</code>.
+      </div>
+
+      <h3>9.3.1 Adjusting Collision Thresholds</h3>
+
+      <p>
+        The Panda's built-in reflexes trigger a protective stop when joint torques or
+        Cartesian contact forces exceed thresholds. Defaults are conservative (10&nbsp;N
+        contact force). You can loosen them for tasks that require deliberate contact:
+      </p>
+
+      <pre><code class="language-python">from franka_msgs.srv import SetForceTorqueCollisionBehavior
+import rclpy
+
+def set_collision_thresholds(node, force_n: float = 20.0,
+                              torque_nm: float = 20.0) -> None:
+    """Raise contact force and torque thresholds (use carefully)."""
+    client = node.create_client(
+        SetForceTorqueCollisionBehavior,
+        '/set_force_torque_collision_behavior')
+    client.wait_for_service(timeout_sec=5.0)
+
+    req = SetForceTorqueCollisionBehavior.Request()
+    # Lower thresholds trigger a reflex stop; upper thresholds a hard stop
+    req.lower_force_thresholds_nominal = [force_n] * 6
+    req.upper_force_thresholds_nominal = [force_n * 2] * 6
+    req.lower_torque_thresholds_nominal = [torque_nm] * 7
+    req.upper_torque_thresholds_nominal = [torque_nm * 2] * 7
+    client.call_async(req)</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §9.4  Hardware Bringup
+         ════════════════════════════════════════════════ -->
+    <section id="bringup">
+      <h2>9.4 Hardware Bringup</h2>
+
+      <h3>9.4.1 Launch Sequence</h3>
+
+      <pre><code class="language-bash"># Terminal 1: launch franka_ros2 with hardware (not simulation)
+ros2 launch franka_bringup franka.launch.py \
+    robot_ip:=192.168.1.1 \
+    use_fake_hardware:=false
+
+# Terminal 2: start MoveIt 2 for the real robot
+ros2 launch franka_moveit_config moveit.launch.py \
+    robot_ip:=192.168.1.1 \
+    use_fake_hardware:=false
+
+# Terminal 3: start RViz for monitoring
+ros2 launch franka_moveit_config moveit_rviz.launch.py
+
+# Terminal 4: load and activate controllers
+ros2 run controller_manager spawner joint_trajectory_controller
+ros2 run controller_manager spawner joint_state_broadcaster</code></pre>
+
+      <h3>9.4.2 Homing the Robot</h3>
+
+      <pre><code class="language-bash"># Send arm to the ready pose (joints at zero-torque configuration)
+ros2 topic pub --once /arm_controller/joint_trajectory \
+    trajectory_msgs/msg/JointTrajectory \
+    "{joint_names: [panda_joint1, panda_joint2, panda_joint3,
+                    panda_joint4, panda_joint5, panda_joint6, panda_joint7],
+      points: [{
+        positions: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785],
+        time_from_start: {sec: 5}
+      }]}"</code></pre>
+
+      <h3>9.4.3 Verifying the Connection in Python</h3>
+
+      <pre><code class="language-python">import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+
+class HardwareCheck(Node):
+    def __init__(self):
+        super().__init__('hardware_check')
+        self._received = False
+        self.create_subscription(
+            JointState, '/joint_states', self._cb, 10)
+
+    def _cb(self, msg: JointState) -> None:
+        if not self._received:
+            self.get_logger().info(
+                f'Joint state received: {[f"{p:.3f}" for p in msg.position]}')
+            self._received = True
+
+def main():
+    rclpy.init()
+    node = HardwareCheck()
+    rclpy.spin_once(node, timeout_sec=3.0)
+    if not node._received:
+        node.get_logger().error(
+            'No /joint_states received. Check FCI connection.')
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §9.5  Latency & Timing
+         ════════════════════════════════════════════════ -->
+    <section id="latency">
+      <h2>9.5 Latency &amp; Timing</h2>
+
+      <p>
+        Latency matters at 1&nbsp;kHz: a 1&nbsp;ms delay is an entire control cycle.
+        Figure&nbsp;9.3 compares typical round-trip latencies for the operations you have
+        used throughout this tutorial, across simulation and real hardware.
+      </p>
+
+      <!-- ── Figure 9.3: latency comparison bar chart ── -->
+      <figure id="fig9-3">
+        <div class="figure-inner">
+          <svg viewBox="0 0 520 215" width="480" xmlns="http://www.w3.org/2000/svg"
+               font-family="Inter, system-ui, sans-serif" font-size="11">
+            <rect width="520" height="215" fill="#fafbfc" rx="4"/>
+
+            <defs>
+              <marker id="arr9d" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#555"/>
+              </marker>
+            </defs>
+
+            <!-- Title -->
+            <text x="260" y="17" text-anchor="middle" fill="#333" font-weight="700" font-size="11">Typical Round-Trip Latency by Operation</text>
+
+            <!-- Axes -->
+            <line x1="190" y1="175" x2="500" y2="175" stroke="#555" stroke-width="1.5" marker-end="url(#arr9d)"/>
+            <line x1="190" y1="30"  x2="190" y2="175" stroke="#555" stroke-width="1.5"/>
+            <text x="500" y="179" text-anchor="start" fill="#555" font-size="9">ms</text>
+
+            <!-- X axis scale: 0–300 ms over 310 px (1 px ≈ 1 ms) -->
+            <text x="190" y="185" text-anchor="middle" fill="#555" font-size="8">0</text>
+            <text x="290" y="185" text-anchor="middle" fill="#555" font-size="8">100</text>
+            <text x="390" y="185" text-anchor="middle" fill="#555" font-size="8">200</text>
+            <text x="490" y="185" text-anchor="middle" fill="#555" font-size="8">300</text>
+            <line x1="290" y1="30" x2="290" y2="175" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="3,3"/>
+            <line x1="390" y1="30" x2="390" y2="175" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="3,3"/>
+
+            <!-- Row labels and bars: y positions 45, 75, 105, 135 -->
+
+            <!-- Row 1: Joint state readback -->
+            <text x="185" y="57" text-anchor="end" fill="#333" font-size="9">Joint state</text>
+            <text x="185" y="67" text-anchor="end" fill="#555" font-size="7">readback</text>
+            <!-- Sim bar: ~0.1 ms → 0 px wide (almost invisible) -->
+            <rect x="190" y="47" width="2" height="11" rx="1" fill="#9ca3af"/>
+            <text x="196" y="57" fill="#9ca3af" font-size="7">0.1 ms (sim)</text>
+            <!-- Real bar: ~0.5 ms → 0.5 px → show as thin bar -->
+            <rect x="190" y="60" width="1" height="11" rx="1" fill="#0057b8"/>
+            <text x="196" y="70" fill="#0057b8" font-size="7">0.5 ms (hw)</text>
+
+            <!-- Row 2: Velocity command -->
+            <text x="185" y="97" text-anchor="end" fill="#333" font-size="9">Velocity cmd</text>
+            <text x="185" y="107" text-anchor="end" fill="#555" font-size="7">roundtrip</text>
+            <rect x="190" y="87" width="3"  height="11" rx="1" fill="#9ca3af"/>
+            <text x="197" y="97"  fill="#9ca3af" font-size="7">0.3 ms (sim)</text>
+            <rect x="190" y="100" width="6" height="11" rx="1" fill="#0057b8"/>
+            <text x="200" y="110" fill="#0057b8" font-size="7">0.6 ms (hw)</text>
+
+            <!-- Row 3: IK solve -->
+            <text x="185" y="137" text-anchor="end" fill="#333" font-size="9">IK solve</text>
+            <text x="185" y="147" text-anchor="end" fill="#555" font-size="7">(TRAC-IK)</text>
+            <rect x="190" y="127" width="20"  height="11" rx="1" fill="#9ca3af"/>
+            <text x="214" y="137" fill="#9ca3af" font-size="7">20 ms (sim)</text>
+            <rect x="190" y="140" width="22"  height="11" rx="1" fill="#0057b8"/>
+            <text x="216" y="150" fill="#0057b8" font-size="7">22 ms (hw)</text>
+
+            <!-- Row 4: MoveIt planning -->
+            <text x="185" y="172" text-anchor="end" fill="#333" font-size="9">MoveIt plan</text>
+            <!-- Sim bar: ~80 ms -->
+            <rect x="190" y="157" width="80"  height="11" rx="1" fill="#9ca3af"/>
+            <text x="274" y="167" fill="#9ca3af" font-size="7">80–500 ms (sim)</text>
+            <!-- Real bar slightly larger due to slower compute sometimes: ~100 ms typical same machine -->
+            <rect x="190" y="170" width="100" height="2" rx="1" fill="#0057b8"/>
+
+            <!-- Legend -->
+            <rect x="300" y="32" width="12" height="9" rx="1" fill="#9ca3af"/>
+            <text x="316" y="41" fill="#555" font-size="8">Simulation (Gazebo)</text>
+            <rect x="300" y="47" width="12" height="9" rx="1" fill="#0057b8"/>
+            <text x="316" y="56" fill="#555" font-size="8">Real hardware (FCI)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure&nbsp;9.3.</strong> Typical latency comparison between Gazebo
+          simulation and real Panda hardware. Joint state readback and velocity command
+          latencies differ by less than 1&nbsp;ms; IK solve time is identical (CPU-bound).
+          MoveIt&nbsp;2 planning time varies widely with scene complexity and planner
+          settings and is hardware-independent.
+        </figcaption>
+      </figure>
+
+      <p>
+        The practical implication: <strong>any code that works in simulation at 200&nbsp;Hz
+        will work on the real hardware</strong> — the FCI latency is small enough to ignore.
+        The critical constraint is the PREEMPT_RT kernel, which ensures your 1&nbsp;kHz loop
+        is not delayed by OS scheduling jitter.
+      </p>
+
+      <h3>9.5.1 Measuring Your Loop Period</h3>
+
+      <pre><code class="language-python">import time
+import rclpy
+from rclpy.node import Node
+
+class LoopTimer(Node):
+    """Measure actual control loop period vs. target."""
+    def __init__(self, target_hz: int = 200):
+        super().__init__('loop_timer')
+        self._target_dt = 1.0 / target_hz
+        self._prev      = time.perf_counter()
+        self._periods   = []
+        self.create_timer(self._target_dt, self._tick)
+
+    def _tick(self) -> None:
+        now    = time.perf_counter()
+        period = (now - self._prev) * 1000.0  # ms
+        self._periods.append(period)
+        self._prev = now
+        if len(self._periods) >= 1000:
+            avg = sum(self._periods) / len(self._periods)
+            mx  = max(self._periods)
+            self.get_logger().info(
+                f'Loop period: avg={avg:.2f} ms  max={mx:.2f} ms '
+                f'(target={self._target_dt*1000:.2f} ms)')
+            self._periods.clear()
+
+def main():
+    rclpy.init()
+    rclpy.spin(LoopTimer(target_hz=200))
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         §9.6  Code Examples
+         ════════════════════════════════════════════════ -->
+    <section id="code">
+      <h2>9.6 Code Examples</h2>
+
+      <h3>9.6.1 Simulation-to-Hardware Switch Pattern</h3>
+
+      <p>
+        Use a single <code>use_sim</code> flag to toggle between simulation and hardware.
+        This pattern avoids duplicating code and makes it easy to switch environments:
+      </p>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+"""
+hw_switch.py — identical code runs in sim or on hardware.
+
+Launch with: python hw_switch.py --use-sim   (Gazebo)
+         or: python hw_switch.py             (real Panda)
+"""
+import argparse
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
+import moveit_py
+from moveit.planning import MoveItPy
+
+ROBOT_IP = '192.168.1.1'
+
+
+def build_target(x: float, y: float, z: float) -> PoseStamped:
+    p = PoseStamped()
+    p.header.frame_id  = 'panda_link0'
+    p.pose.position.x  = x
+    p.pose.position.y  = y
+    p.pose.position.z  = z
+    p.pose.orientation.x = 1.0   # pointing down
+    p.pose.orientation.w = 0.0
+    return p
+
+
+class ArmNode(Node):
+    def __init__(self, use_sim: bool):
+        node_name = 'arm_sim' if use_sim else 'arm_hw'
+        super().__init__(node_name)
+
+        # MoveItPy initialisation is identical for sim and hardware.
+        # The difference is in the launch files used to start franka_ros2.
+        self.moveit: MoveItPy = moveit_py.MoveItPy(node_name=node_name)
+        self.arm = self.moveit.get_planning_component('panda_arm')
+        self.get_logger().info(
+            f'Running on {"simulation" if use_sim else "real hardware"}.')
+
+    def move(self, x: float, y: float, z: float,
+             vel_scale: float = 0.2) -> bool:
+        self.arm.set_start_state_to_current_state()
+        self.arm.set_goal_state(
+            pose_stamped_msg=build_target(x, y, z),
+            pose_link='panda_hand')
+
+        from moveit.planning import PlanRequestParameters
+        params = PlanRequestParameters(self.moveit, 'panda_arm')
+        params.max_velocity_scaling_factor     = vel_scale
+        params.max_acceleration_scaling_factor = vel_scale * 0.5
+
+        plan = self.arm.plan(single_plan_parameters=params)
+        if not plan:
+            self.get_logger().error('Planning failed.')
+            return False
+        result = self.moveit.execute(plan.trajectory, controllers=[])
+        return bool(result)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--use-sim', action='store_true',
+                        help='Use Gazebo simulation instead of real hardware')
+    args, _ = parser.parse_known_args()
+
+    rclpy.init()
+    node = ArmNode(use_sim=args.use_sim)
+    rclpy.spin_once(node, timeout_sec=1.0)
+
+    # Move to a sample target — same code, sim or hardware
+    success = node.move(x=0.4, y=0.0, z=0.5, vel_scale=0.15)
+    node.get_logger().info(f'Motion {"succeeded" if success else "failed"}.')
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+    </section>
+
+    <!-- Exercises -->
+    <section id="exercises" class="exercises">
+      <h2>Exercises</h2>
+      <ol>
+        <li>
+          Run <code>cyclictest</code> on your control PC with and without the PREEMPT_RT
+          kernel. Compare the 99th-percentile latency. What is the worst-case jitter
+          without the RT kernel, and would it affect the 1&nbsp;kHz control loop?
+        </li>
+        <li>
+          Using <code>loop_timer.py</code>, measure the actual period of a 1&nbsp;kHz
+          timer on your machine. What is the maximum observed period? How much margin
+          does this leave before the watchdog (500&nbsp;ms timeout) triggers?
+        </li>
+        <li>
+          Trigger an E-stop intentionally (e.g., push the red button) while a joint
+          trajectory is executing. Observe the arm behavior and the ROS log output.
+          Then write the recovery procedure from memory without referring to the text.
+        </li>
+        <li>
+          Modify <code>hw_switch.py</code> to add a <code>--vel-scale</code> argument
+          and test with values from 0.05 to 0.5. On real hardware, compare the motion at
+          low speed to simulation: does it feel smoother or rougher? Why?
+        </li>
+      </ol>
+    </section>
+
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h2>Key Terms</h2>
+      <dl>
+        <dt>PREEMPT_RT</dt>
+        <dd>A Linux kernel patch that makes the kernel fully preemptible, reducing
+            scheduling jitter to enable hard real-time operation at 1&nbsp;kHz.</dd>
+        <dt>Franka Control Interface (FCI)</dt>
+        <dd>The UDP-based protocol over Gigabit Ethernet that allows external computers
+            to stream 1&nbsp;kHz control commands to the Panda base unit.</dd>
+        <dt>Protective stop</dt>
+        <dd>A reversible stop triggered by a reflex (contact force, velocity limit, or
+            watchdog timeout); recoverable via error-recovery service call.</dd>
+        <dt>Emergency stop (E-stop)</dt>
+        <dd>A hard stop that cuts motor power within 1&nbsp;ms; requires manual release and
+            software recovery before motion can resume.</dd>
+        <dt>Watchdog timer</dt>
+        <dd>The FCI safety mechanism that triggers a protective stop if no control packet
+            arrives within a fixed timeout (default 1&nbsp;ms).</dd>
+        <dt>EtherCAT</dt>
+        <dd>The real-time industrial Ethernet bus used internally between the Panda base
+            unit and the seven joint motor drives.</dd>
+        <dt>cyclictest</dt>
+        <dd>A standard Linux real-time benchmark tool that measures scheduling latency
+            by waking a high-priority thread at precise intervals.</dd>
+        <dt>Collision threshold</dt>
+        <dd>A configurable force or torque limit; when exceeded by a measured value, the
+            controller triggers a protective stop reflex.</dd>
+      </dl>
+    </aside>
+
+    <!-- References -->
+    <section class="references" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref1">
+          Franka Robotics GmbH, <em>Franka Control Interface (FCI) Documentation</em>,
+          version 5.x, 2023. [Online]. Available:
+          <a href="https://frankaemika.github.io/docs/">frankaemika.github.io/docs/</a>
+        </li>
+        <li id="ref2">
+          T. Gleixner, D. Niehaus, C. Kenna, and J. Kacur, "PREEMPT_RT Linux,"
+          Proceedings of the Linux Symposium, Ottawa, ON, 2008.
+        </li>
+        <li id="ref3">
+          H. Bischoff, U. Graichen, and G. Hirzinger, "KUKA youBot: A mobile manipulator
+          for research and education," in <em>Proc. IEEE ICRA</em>, 2011, pp. 1–4.
+        </li>
+        <li id="ref4">
+          ISO/TS 15066:2016, <em>Robots and Robotic Devices — Collaborative Robots</em>.
+          International Organization for Standardization, 2016.
+        </li>
+        <li id="ref5">
+          S. Haddadin, A. Albu-Schäffer, A. De Luca, and G. Hirzinger, "Collision
+          detection and reaction: A contribution to safe physical human-robot interaction,"
+          in <em>Proc. IEEE/RSJ IROS</em>, Nice, France, 2008, pp. 3356–3363.
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch08.html">&larr; Chapter 8: MoveIt&nbsp;2 Deep Dive</a>
+    <span class="page-info">Chapter 9 of 10</span>
+    <a href="ch10.html">Chapter 10: Pick &amp; Place &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>

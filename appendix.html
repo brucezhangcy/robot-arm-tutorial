@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appendices A–C — Programming Robot Arms</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="index.html">Programming Robot Arms</a>
+      <div class="subtitle">Franka Panda · ROS&nbsp;2 · Python</div>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">Home &amp; Contents</a></li>
+      </ul>
+      <div class="section-label">Chapters</div>
+      <ul>
+        <li><a href="ch01.html">1 · Foundations &amp; Toolchain</a></li>
+        <li><a href="ch02.html">2 · Kinematics &amp; Frames</a></li>
+        <li><a href="ch03.html">3 · Simulation Environment</a></li>
+        <li><a href="ch04.html">4 · Position Control — Joints</a></li>
+        <li><a href="ch05.html">5 · Position Control — Cartesian</a></li>
+        <li><a href="ch06.html">6 · Velocity Control</a></li>
+        <li><a href="ch07.html">7 · Impedance &amp; Torque Control</a></li>
+        <li><a href="ch08.html">8 · MoveIt&nbsp;2 Deep Dive</a></li>
+        <li><a href="ch09.html">9 · Real Hardware</a></li>
+        <li><a href="ch10.html">10 · Pick &amp; Place (Capstone)</a></li>
+      </ul>
+      <div class="section-label">Appendices</div>
+      <ul>
+        <li><a href="appendix.html#ros2-primer" class="active">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+        <li><a href="appendix.html#dh-table">B · Panda DH Parameter Table</a></li>
+        <li><a href="appendix.html#troubleshooting">C · Troubleshooting</a></li>
+        <li><a href="appendix-hardware.html">D · Robot Arm Hardware Specs</a></li>
+      </ul>
+      <div class="page-toc">
+        <div class="section-label">This Page</div>
+        <ul>
+          <li><a href="#ros2-primer">A · ROS&nbsp;2 &amp; Python Primer</a></li>
+          <li><a href="#dh-table">B · Panda DH Parameters</a></li>
+          <li><a href="#troubleshooting">C · Troubleshooting</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Header ══ -->
+  <header class="site-header">
+    <span class="chapter-label">Appendices</span>
+    <h1>A · B · C — Reference Material</h1>
+  </header>
+
+  <!-- ══ Main ══ -->
+  <main>
+
+    <!-- ════════════════════════════════════════════════
+         Appendix A — ROS 2 & Python Primer
+         ════════════════════════════════════════════════ -->
+    <section id="ros2-primer">
+      <h2>Appendix A · ROS&nbsp;2 &amp; Python Quick Reference</h2>
+
+      <p>
+        This appendix provides a compact reference for the ROS&nbsp;2 concepts and Python
+        patterns used throughout the tutorial. It is not a substitute for the official
+        ROS&nbsp;2 documentation but serves as a quick lookup during coding.
+      </p>
+
+      <h3>A.1 Essential ROS&nbsp;2 CLI Commands</h3>
+
+      <pre><code class="language-bash"># ── Nodes ─────────────────────────────────────────────────────────
+ros2 node list                        # list running nodes
+ros2 node info /node_name             # show publishers, subscribers, services
+
+# ── Topics ────────────────────────────────────────────────────────
+ros2 topic list                       # list all active topics
+ros2 topic echo /joint_states         # print messages as they arrive
+ros2 topic hz /joint_states           # measure publish rate
+ros2 topic info /joint_states         # message type + pub/sub count
+ros2 topic pub --once /topic std_msgs/msg/String "data: hello"
+
+# ── Services ──────────────────────────────────────────────────────
+ros2 service list
+ros2 service call /error_recovery franka_msgs/srv/ErrorRecovery
+
+# ── Actions ───────────────────────────────────────────────────────
+ros2 action list
+ros2 action send_goal /move_action_server \
+    control_msgs/action/FollowJointTrajectory {}
+
+# ── Parameters ────────────────────────────────────────────────────
+ros2 param list /node_name
+ros2 param get /node_name param_name
+ros2 param set /node_name param_name value
+
+# ── Launch ────────────────────────────────────────────────────────
+ros2 launch package_name file.launch.py arg:=value
+
+# ── Controllers ───────────────────────────────────────────────────
+ros2 control list_controllers
+ros2 control switch_controllers --activate ctrl1 --deactivate ctrl2
+
+# ── TF ────────────────────────────────────────────────────────────
+ros2 run tf2_tools view_frames           # render TF tree to PDF
+ros2 run tf2_ros tf2_echo world panda_hand   # print transform</code></pre>
+
+      <h3>A.2 Minimal ROS&nbsp;2 Python Node</h3>
+
+      <pre><code class="language-python">#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+
+class MinimalNode(Node):
+    def __init__(self):
+        super().__init__('minimal_node')
+
+        # Publisher
+        self.pub = self.create_publisher(String, '/chatter', 10)
+
+        # Subscriber
+        self.create_subscription(String, '/chatter', self._cb, 10)
+
+        # Timer (1 Hz)
+        self.create_timer(1.0, self._timer_cb)
+        self.get_logger().info('Minimal node started.')
+
+    def _timer_cb(self) -> None:
+        msg = String()
+        msg.data = 'Hello from minimal_node'
+        self.pub.publish(msg)
+
+    def _cb(self, msg: String) -> None:
+        self.get_logger().info(f'Received: {msg.data}')
+
+
+def main():
+    rclpy.init()
+    rclpy.spin(MinimalNode())
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()</code></pre>
+
+      <h3>A.3 ROS&nbsp;2 Python Patterns Used in This Tutorial</h3>
+
+      <table>
+        <caption>Table&nbsp;A.1 — Common Python patterns and their ROS&nbsp;2 equivalent</caption>
+        <thead>
+          <tr><th>Pattern</th><th>Python code</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Single spin step</td>
+            <td><code>rclpy.spin_once(node, timeout_sec=0.1)</code></td>
+            <td>Process one callback cycle; use in control loops</td>
+          </tr>
+          <tr>
+            <td>Wait for service</td>
+            <td><code>client.wait_for_service(timeout_sec=5.0)</code></td>
+            <td>Blocks until the service is available</td>
+          </tr>
+          <tr>
+            <td>Async service call</td>
+            <td><code>future = client.call_async(req)</code><br>
+                <code>rclpy.spin_until_future_complete(node, future)</code></td>
+            <td>Non-blocking call; spin waits for result</td>
+          </tr>
+          <tr>
+            <td>Latched parameter</td>
+            <td><code>self.declare_parameter('kp', 300.0)</code><br>
+                <code>kp = self.get_parameter('kp').value</code></td>
+            <td>Declare in __init__; read anywhere</td>
+          </tr>
+          <tr>
+            <td>QoS reliable</td>
+            <td><code>from rclpy.qos import QoSProfile, ReliabilityPolicy</code><br>
+                <code>qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, depth=10)</code></td>
+            <td>Use for control commands; default is best-effort</td>
+          </tr>
+          <tr>
+            <td>Get current time</td>
+            <td><code>self.get_clock().now().to_msg()</code></td>
+            <td>Returns a <code>builtin_interfaces/Time</code> message</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>A.4 MoveItPy Cheat Sheet</h3>
+
+      <pre><code class="language-python">import moveit_py
+from moveit.planning import MoveItPy, PlanRequestParameters
+from geometry_msgs.msg import PoseStamped
+
+# Initialise
+moveit   = moveit_py.MoveItPy(node_name='my_node')
+arm      = moveit.get_planning_component('panda_arm')
+scene    = moveit.get_planning_scene_monitor()
+
+# Set start state to current
+arm.set_start_state_to_current_state()
+
+# Set goal by pose
+target = PoseStamped()
+target.header.frame_id    = 'panda_link0'
+target.pose.position.x    = 0.4
+target.pose.orientation.x = 1.0   # pointing down
+arm.set_goal_state(pose_stamped_msg=target, pose_link='panda_hand')
+
+# Set goal by named state
+arm.set_goal_state(configuration_name='ready')
+
+# Set goal by joint values
+arm.set_goal_state(joint_values={
+    'panda_joint1': 0.0,
+    'panda_joint2': -0.785,
+    # ...
+})
+
+# Plan
+params = PlanRequestParameters(moveit, 'panda_arm')
+params.max_velocity_scaling_factor     = 0.3
+params.max_acceleration_scaling_factor = 0.1
+plan = arm.plan(single_plan_parameters=params)
+
+# Execute
+if plan:
+    moveit.execute(plan.trajectory, controllers=[])
+
+# Cartesian path
+plan, fraction = arm.compute_cartesian_path(
+    waypoints=[target],
+    max_step=0.005,      # 5 mm interpolation
+    jump_threshold=0.0,  # 0 = disable jump check
+)
+if fraction >= 0.95:
+    moveit.execute(plan.trajectory, controllers=[])</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         Appendix B — Panda DH Parameter Table
+         ════════════════════════════════════════════════ -->
+    <section id="dh-table">
+      <h2>Appendix B · Panda DH Parameter Table</h2>
+
+      <p>
+        The Denavit-Hartenberg parameters describe the kinematic chain from the base
+        frame to the end-effector. All angles in radians, distances in metres.
+        The convention follows Craig's modified DH (proximal) form as used in the
+        Panda's URDF.
+      </p>
+
+      <table>
+        <caption>Table&nbsp;B.1 — Panda (FR3) modified DH parameters</caption>
+        <thead>
+          <tr>
+            <th>Joint</th>
+            <th>a (m)</th>
+            <th>d (m)</th>
+            <th>&#x03B1; (rad)</th>
+            <th>&#x03B8; offset (rad)</th>
+            <th>Range min (rad)</th>
+            <th>Range max (rad)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>J1</td><td>0</td><td>0.333</td><td>0</td><td>0</td><td>&#x2212;2.8973</td><td>2.8973</td></tr>
+          <tr><td>J2</td><td>0</td><td>0</td><td>&#x2212;&#x03C0;/2</td><td>0</td><td>&#x2212;1.7628</td><td>1.7628</td></tr>
+          <tr><td>J3</td><td>0</td><td>0.316</td><td>&#x03C0;/2</td><td>0</td><td>&#x2212;2.8973</td><td>2.8973</td></tr>
+          <tr><td>J4</td><td>0.0825</td><td>0</td><td>&#x03C0;/2</td><td>0</td><td>&#x2212;3.0718</td><td>&#x2212;0.0698</td></tr>
+          <tr><td>J5</td><td>&#x2212;0.0825</td><td>0.384</td><td>&#x2212;&#x03C0;/2</td><td>0</td><td>&#x2212;2.8973</td><td>2.8973</td></tr>
+          <tr><td>J6</td><td>0</td><td>0</td><td>&#x03C0;/2</td><td>0</td><td>&#x2212;0.0175</td><td>3.7525</td></tr>
+          <tr><td>J7</td><td>0.088</td><td>0.107</td><td>&#x03C0;/2</td><td>0</td><td>&#x2212;2.8973</td><td>2.8973</td></tr>
+          <tr><td>Flange</td><td>0</td><td>0.1034</td><td>0</td><td>0</td><td colspan="2">Fixed (no joint)</td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        Notes on the table:
+      </p>
+      <ul>
+        <li>
+          <strong>J4</strong> has an asymmetric range (&#x2212;3.07 to &#x2212;0.07&nbsp;rad) because the
+          zero-torque configuration places J4 at approximately &#x2212;&#x03C0;/4, not at 0. This is a
+          DH convention artefact, not a mechanical limit.
+        </li>
+        <li>
+          <strong>J6</strong> has an unusual positive range (up to 3.75&nbsp;rad ≈ 215°) because wrist
+          configurations that wrap around the flange are mechanically valid.
+        </li>
+        <li>
+          The <strong>Flange</strong> frame is the physical flange of the arm. The
+          <code>panda_hand</code> frame is a fixed transform of +107&nbsp;mm in Z from the flange.
+          The TCP (tool centre point) <code>panda_EE</code> is a further fixed transform.
+        </li>
+      </ul>
+
+      <h3>B.1 Reading the DH Table in Python</h3>
+
+      <pre><code class="language-python">import numpy as np
+
+# Modified DH parameters: [a, d, alpha, theta_offset]
+PANDA_DH = np.array([
+    [0.0,      0.333,   0.0,           0.0],
+    [0.0,      0.0,    -np.pi / 2,     0.0],
+    [0.0,      0.316,   np.pi / 2,     0.0],
+    [0.0825,   0.0,     np.pi / 2,     0.0],
+    [-0.0825,  0.384,  -np.pi / 2,     0.0],
+    [0.0,      0.0,     np.pi / 2,     0.0],
+    [0.088,    0.107,   np.pi / 2,     0.0],
+])
+
+
+def dh_transform(a: float, d: float, alpha: float, theta: float) -> np.ndarray:
+    """Return the 4x4 homogeneous transform for one DH link."""
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = np.cos(alpha), np.sin(alpha)
+    return np.array([
+        [ct,  -st * ca,  st * sa,  a * ct],
+        [st,   ct * ca, -ct * sa,  a * st],
+        [0.0,  sa,       ca,       d     ],
+        [0.0,  0.0,      0.0,      1.0   ],
+    ])
+
+
+def forward_kinematics(q: np.ndarray) -> np.ndarray:
+    """Return 4x4 EEF transform given 7 joint angles (rad)."""
+    T = np.eye(4)
+    for i, (row, qi) in enumerate(zip(PANDA_DH, q)):
+        a, d, alpha, offset = row
+        T = T @ dh_transform(a, d, alpha, qi + offset)
+    return T
+
+
+if __name__ == '__main__':
+    q_home = np.array([0.0, -np.pi/4, 0.0, -3*np.pi/4, 0.0, np.pi/2, np.pi/4])
+    T = forward_kinematics(q_home)
+    print('EEF position (home):', T[:3, 3].round(4))</code></pre>
+    </section>
+
+    <!-- ════════════════════════════════════════════════
+         Appendix C — Troubleshooting
+         ════════════════════════════════════════════════ -->
+    <section id="troubleshooting">
+      <h2>Appendix C · Troubleshooting Guide</h2>
+
+      <p>
+        This section lists the most common problems encountered when following the tutorial,
+        together with their causes and solutions.
+      </p>
+
+      <h3>C.1 Installation and Setup</h3>
+
+      <table>
+        <caption>Table&nbsp;C.1 — Installation issues</caption>
+        <thead>
+          <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ros2: command not found</code></td>
+            <td>ROS&nbsp;2 setup script not sourced</td>
+            <td>Add <code>source /opt/ros/humble/setup.bash</code> to <code>~/.bashrc</code></td>
+          </tr>
+          <tr>
+            <td><code>Package 'franka_ros2' not found</code></td>
+            <td>franka_ros2 workspace not built or not sourced</td>
+            <td>Run <code>colcon build</code> in the workspace, then source <code>install/setup.bash</code></td>
+          </tr>
+          <tr>
+            <td>MathJax equations not rendering in browser</td>
+            <td>No internet connection (CDN not reachable)</td>
+            <td>Open HTML files via a local web server or connect to the internet</td>
+          </tr>
+          <tr>
+            <td><code>ImportError: No module named 'moveit_py'</code></td>
+            <td>moveit_py package not built or Python path not set</td>
+            <td>Source the MoveIt&nbsp;2 workspace; ensure <code>PYTHONPATH</code> includes <code>install/lib/python3.x/site-packages</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>C.2 Simulation</h3>
+
+      <table>
+        <caption>Table&nbsp;C.2 — Simulation issues</caption>
+        <thead>
+          <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Gazebo opens but arm falls through floor</td>
+            <td>Physics plugin not loading or gravity model incorrect</td>
+            <td>Confirm <code>use_fake_hardware:=true</code> in the launch file; restart Gazebo</td>
+          </tr>
+          <tr>
+            <td><code>move_group</code> fails to find IK solution</td>
+            <td>TRAC-IK plugin not installed or goal pose is out of reach</td>
+            <td>Install <code>ros-humble-trac-ik-kinematics-plugin</code>; verify goal is within 855&nbsp;mm reach</td>
+          </tr>
+          <tr>
+            <td>Planning always fails with "No valid goal configurations"</td>
+            <td>Goal pose is in self-collision</td>
+            <td>Visualise in RViz; move goal slightly; check <code>z &gt; 0.1</code> (above table)</td>
+          </tr>
+          <tr>
+            <td>Controllers not loading after launch</td>
+            <td>controller_manager not discovering YAML config</td>
+            <td>Check that <code>ros2 control list_controllers</code> shows expected controllers;
+                re-run spawner commands</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>C.3 Real Hardware</h3>
+
+      <table>
+        <caption>Table&nbsp;C.3 — Real hardware issues</caption>
+        <thead>
+          <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cannot ping robot (192.168.1.1)</td>
+            <td>Wrong NIC, NIC not configured, cable unplugged</td>
+            <td>Run <code>ip addr</code> to confirm NIC has 192.168.1.x address;
+                check cable is plugged into the <em>dedicated</em> NIC, not the laptop port</td>
+          </tr>
+          <tr>
+            <td>Robot enters protective stop immediately</td>
+            <td>FCI control packet jitter; NIC shared with other traffic</td>
+            <td>Disable Wi-Fi, close bandwidth-heavy applications;
+                confirm PREEMPT_RT kernel with <code>uname -r</code></td>
+          </tr>
+          <tr>
+            <td><code>libfranka</code> error: "Connection timeout"</td>
+            <td>FCI not enabled on robot pendant</td>
+            <td>On the robot web interface (http://192.168.1.1), unlock the robot and enable FCI mode</td>
+          </tr>
+          <tr>
+            <td>Arm springs back violently after E-stop release</td>
+            <td>Controller sending large torques before state sync</td>
+            <td>Always call error-recovery service before re-activating controllers;
+                home the arm to the ready pose first</td>
+          </tr>
+          <tr>
+            <td>Gripper does not close</td>
+            <td>Gripper action server not running or wrong topic name</td>
+            <td>Run <code>ros2 action list</code>; confirm <code>/fr3_gripper/grasp</code>
+                is present; start <code>franka_gripper</code> node if missing</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>C.4 MoveIt&nbsp;2 Planning</h3>
+
+      <table>
+        <caption>Table&nbsp;C.4 — MoveIt&nbsp;2 planning issues</caption>
+        <thead>
+          <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Planning succeeds but execution fails immediately</td>
+            <td>Trajectory controller not active</td>
+            <td>Run <code>ros2 control list_controllers</code>;
+                activate <code>joint_trajectory_controller</code></td>
+          </tr>
+          <tr>
+            <td><code>compute_cartesian_path</code> returns fraction &lt; 0.5</td>
+            <td>Requested path passes through a singularity or obstacle</td>
+            <td>Increase <code>max_step</code> to 0.01–0.02; break path into shorter segments;
+                add waypoints to route around the obstacle</td>
+          </tr>
+          <tr>
+            <td>Arm moves very slowly despite <code>vel_scale=1.0</code></td>
+            <td>Global velocity scaling in MoveIt&nbsp;2 config overrides Python setting</td>
+            <td>Check <code>moveit_cpp.yaml</code> for <code>default_velocity_scaling_factor</code>;
+                set to 1.0</td>
+          </tr>
+          <tr>
+            <td>Planning scene objects not visible in RViz</td>
+            <td>Planning scene not published to the correct topic</td>
+            <td>Add a <em>Planning Scene</em> display in RViz; confirm topic is
+                <code>/monitored_planning_scene</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>C.5 Quick Diagnostic Commands</h3>
+
+      <pre><code class="language-bash"># Check all controllers are active
+ros2 control list_controllers | grep -v unconfigured
+
+# Watch joint states at 10 Hz
+ros2 topic echo --once /joint_states
+
+# Check planning scene for collision objects
+ros2 topic echo --once /monitored_planning_scene | grep "object_colors"
+
+# Confirm MoveIt 2 move_group is alive
+ros2 service call /move_group/get_planner_params \
+    moveit_msgs/srv/GetPlannerParams {}
+
+# Check TF tree (look for broken chain)
+ros2 run tf2_tools view_frames && evince frames.pdf
+
+# Tail the robot error log
+ros2 topic echo /franka_robot_state_broadcaster/robot_state \
+    | grep -A2 "robot_mode\|error"
+
+# Force error recovery after protective stop
+ros2 service call /error_recovery franka_msgs/srv/ErrorRecovery</code></pre>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="ch10.html">&larr; Chapter 10: Pick &amp; Place</a>
+    <span class="page-info">Appendices A–C of D</span>
+    <a href="appendix-hardware.html">Appendix D: Hardware Specs &rarr;</a>
+  </footer>
+
+</div><!-- .page-wrapper -->
+
+<script>
+  window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</body>
+</html>
