@@ -271,6 +271,33 @@ Full chapter (same layout as ch01–ch05), 8 logical sections.
 
 ---
 
+## 2026-05-28 — Full SVG Quality Audit and Fixes
+
+### Scope
+Audited every SVG figure across all 10 chapters, appendix pages, and appendix-hardware.html for: text overflowing viewBox bounds, element overlaps, invisible/too-small elements, and labels too close to container edges.
+
+### Fixes Applied
+
+| File | Figure | Issue | Fix |
+|---|---|---|---|
+| `ch01.html` | Fig 1.1 | Caption text baseline y=516 in 520 px viewBox (4 px margin, potential clip) | Moved text to y=508 |
+| `ch04.html` | Fig 4.2 | "t (s)" axis label at x=540 overflows 560 px viewBox right edge | Moved label to x=525 |
+| `ch07.html` | Fig 7.1 | "K" and "(stiffness)" labels too close to spring peaks at y=70 | Moved "K" y=61→52, "(stiffness)" y=73→63 |
+| `ch07.html` | Fig 7.1 | "(damping)" at y=105 and "B" at y=113 reversed order and essentially touching | Swapped order: "B" now at y=102 (above), "(damping)" at y=113 (below) |
+| `ch08.html` | Fig 8.2 | "Work surface" label at y=192 in 200 px viewBox (8 px margin, potential clip) | Expanded viewBox to 215 px; moved text to y=207 |
+| `ch09.html` | Fig 9.3 | Row 4 (MoveIt plan) hw bar height=2 (invisible); entire row crammed against x-axis at y=175 | Expanded viewBox 215→230; moved x-axis to y=190; made hw bar height=9; added "~100 ms (hw)" label |
+| `ch10.html` | Fig 10.1 | DONE box (x=185) overlaps INIT box (right edge x=195) by 10 px | Moved DONE box to x=210 (15 px gap); updated text center x=265→290 |
+| `ch10.html` | Fig 10.1 | RETRACT→DONE arrow drawn as 3 lines (one invisible, one 1 px) | Replaced with single clean L-shaped polyline: 330,86→290,86→290,58 |
+
+### No-Action Items (confirmed acceptable)
+- **ch01 Fig 1.3** (viewBox 700×400): previously flagged as "x=452 overflow 580px" — actual viewBox is 700 px; no overflow.
+- **ch02 Fig 2.4**: lens-shaped workspace is an aesthetic/accuracy concern (annular sector preferred), not a text/layout bug.
+- **ch02 Fig 2.5**: J6/J7 circles touch in wrist-singularity panel — intentional visual (showing alignment).
+- **ch06 Fig 6.3**: branch dot at cx=500 and arrow x1=500 are aligned; no visual gap.
+- **ch09 Fig 9.3**: x-axis does NOT cut through any bar (bars end at y=168/172, axis at y=175 original; now y=190 after fix).
+
+---
+
 ## Planned Work
 
 | File | Topic | Key Diagrams |

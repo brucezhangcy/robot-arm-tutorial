@@ -171,8 +171,8 @@
             <text x="405" y="90" text-anchor="middle" fill="#15803d" font-weight="600" font-size="10">RETRACT — return home</text>
 
             <!-- DONE -->
-            <rect x="185" y="28" width="160" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
-            <text x="265" y="46" text-anchor="middle" fill="#5b21b6" font-weight="700" font-size="10">DONE</text>
+            <rect x="210" y="28" width="160" height="28" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+            <text x="290" y="46" text-anchor="middle" fill="#5b21b6" font-weight="700" font-size="10">DONE</text>
 
             <!-- ERROR state -->
             <rect x="225" y="245" width="90" height="28" rx="14" fill="#fde8e8" stroke="#dc2626" stroke-width="1.8"/>
@@ -192,10 +192,8 @@
             <line x1="405" y1="158" x2="405" y2="146" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
             <line x1="405" y1="114" x2="405" y2="102" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
 
-            <!-- RETRACT → DONE -->
-            <line x1="330" y1="86"  x2="347" y2="86" stroke="#555" stroke-width="1" opacity="0"/>
-            <line x1="345" y1="86"  x2="348" y2="42" stroke="#555" stroke-width="1.5"/>
-            <line x1="348" y1="42"  x2="347" y2="42" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
+            <!-- RETRACT → DONE (L-shaped path: left along y=86, up into DONE bottom) -->
+            <polyline points="330,86 290,86 290,58" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arr10a)"/>
 
             <!-- Error arrows from any state (simplified: single dashed line from center) -->
             <line x1="195" y1="130" x2="225" y2="250" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arr10r)"/>
