@@ -183,14 +183,14 @@
             <g transform="translate(20,20)">
               <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
               <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 1</text>
-              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate z_{i-1} by θ_i</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate z<tspan baseline-shift="sub" font-size="7">i−1</tspan> by θ<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <!-- frame i-1 -->
               <line x1="72" y1="140" x2="72" y2="60" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
-              <text x="76" y="58" fill="#c0392b" font-size="10">z_{i-1}</text>
+              <text x="76" y="58" fill="#c0392b" font-size="10">z<tspan baseline-shift="sub" font-size="7">i−1</tspan></text>
               <line x1="72" y1="140" x2="140" y2="140" stroke="#2ecc71" stroke-width="2" marker-end="url(#ga)"/>
               <!-- label below the arrow so it stays inside the panel -->
-              <text x="92" y="153" fill="#2ecc71" font-size="10">x_{i-1}</text>
+              <text x="92" y="153" fill="#2ecc71" font-size="10">x<tspan baseline-shift="sub" font-size="7">i−1</tspan></text>
               <circle cx="72" cy="140" r="3" fill="#333"/>
 
               <!-- rotated x axis by theta ~30 deg (endpoint at cos30°*65=56, sin30°*65=32) -->
@@ -203,42 +203,42 @@
               <!--      = (72+36.4, 140−21) = (108.4, 119) ≈ (108, 119)                -->
               <!-- sweep=0 (CCW in SVG) = short upward arc from x_{i-1} to x′  ✓       -->
               <path d="M 114 140 A 42 42 0 0 0 108 119" fill="none" stroke="#e67e22" stroke-width="1.8"/>
-              <text x="118" y="132" fill="#e67e22" font-size="11" font-weight="600">θ_i</text>
+              <text x="118" y="132" fill="#e67e22" font-size="11" font-weight="600">θ<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
-              <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Rotate x_{i-1} about</text>
-              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z_{i-1} by angle θ_i</text>
+              <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Rotate x<tspan baseline-shift="sub" font-size="7">i−1</tspan> about</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z<tspan baseline-shift="sub" font-size="7">i−1</tspan> by angle θ<tspan baseline-shift="sub" font-size="7">i</tspan></text>
             </g>
 
             <!-- ── STEP 2: Translate along z by d ── -->
             <g transform="translate(178,20)">
               <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
               <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 2</text>
-              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate z_{i-1} by d_i</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate z<tspan baseline-shift="sub" font-size="7">i−1</tspan> by d<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <line x1="72" y1="200" x2="72" y2="70" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
               <text x="76" y="68" fill="#c0392b" font-size="10">z</text>
 
               <!-- origin at bottom -->
               <circle cx="72" cy="200" r="3" fill="#333"/>
-              <text x="82" y="204" fill="#555" font-size="10">O_{i-1}</text>
+              <text x="82" y="204" fill="#555" font-size="10">O<tspan baseline-shift="sub" font-size="7">i−1</tspan></text>
 
               <!-- new origin after d translation -->
               <circle cx="72" cy="130" r="3" fill="#0057b8"/>
-              <text x="82" y="128" fill="#0057b8" font-size="10">O' (after d_i)</text>
+              <text x="82" y="128" fill="#0057b8" font-size="10">O' (after d<tspan baseline-shift="sub" font-size="7">i</tspan>)</text>
 
               <!-- d annotation -->
               <line x1="55" y1="200" x2="55" y2="130" stroke="#e67e22" stroke-width="1.5" marker-end="url(#oa)" marker-start="url(#oa2)"/>
-              <text x="25" y="168" fill="#e67e22" font-size="11" font-weight="600">d_i</text>
+              <text x="25" y="168" fill="#e67e22" font-size="11" font-weight="600">d<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Move origin along</text>
-              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z_{i-1} by distance d_i</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">z<tspan baseline-shift="sub" font-size="7">i−1</tspan> by distance d<tspan baseline-shift="sub" font-size="7">i</tspan></text>
             </g>
 
             <!-- ── STEP 3: Translate along x by a ── -->
             <g transform="translate(336,20)">
               <rect x="0" y="0" width="145" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
               <text x="72" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 3</text>
-              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate x' by a_i</text>
+              <text x="72" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Translate x' by a<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <!-- x axis -->
               <line x1="20" y1="140" x2="130" y2="140" stroke="#27ae60" stroke-width="2" marker-end="url(#ga)"/>
@@ -250,21 +250,21 @@
 
               <!-- a annotation -->
               <line x1="20" y1="155" x2="95" y2="155" stroke="#e67e22" stroke-width="1.5" marker-end="url(#oa)" marker-start="url(#oa2)"/>
-              <text x="50" y="172" fill="#e67e22" font-size="11" font-weight="600">a_i</text>
+              <text x="50" y="172" fill="#e67e22" font-size="11" font-weight="600">a<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <text x="72" y="225" text-anchor="middle" fill="#555" font-size="10">Move origin along</text>
-              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">x' by distance a_i</text>
+              <text x="72" y="237" text-anchor="middle" fill="#555" font-size="10">x' by distance a<tspan baseline-shift="sub" font-size="7">i</tspan></text>
             </g>
 
             <!-- ── STEP 4: Rotate x by alpha ── -->
             <g transform="translate(494,20)">
               <rect x="0" y="0" width="162" height="240" rx="5" fill="#eef5ff" stroke="#bed4f0" stroke-width="1"/>
               <text x="81" y="18" text-anchor="middle" fill="#0057b8" font-weight="700" font-size="11">Step 4</text>
-              <text x="81" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate x' by α_i → frame i</text>
+              <text x="81" y="31" text-anchor="middle" fill="#0057b8" font-size="10">Rotate x' by α<tspan baseline-shift="sub" font-size="7">i</tspan> → frame i</text>
 
               <!-- x axis stays -->
               <line x1="20" y1="150" x2="110" y2="150" stroke="#27ae60" stroke-width="2" marker-end="url(#ga)"/>
-              <text x="108" y="145" fill="#27ae60" font-size="10">x_i</text>
+              <text x="108" y="145" fill="#27ae60" font-size="10">x<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <!-- old z (vertical) -->
               <line x1="65" y1="150" x2="65" y2="70" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4,3"/>
@@ -272,7 +272,7 @@
 
               <!-- new z rotated by alpha ~35 deg from vertical -->
               <line x1="65" y1="150" x2="106" y2="75" stroke="#c0392b" stroke-width="2" marker-end="url(#ra)"/>
-              <text x="107" y="72" fill="#c0392b" font-size="10">z_i</text>
+              <text x="107" y="72" fill="#c0392b" font-size="10">z<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <!-- α arc: properly centered at joint origin (65,150), radius 50          -->
               <!-- start: z_old direction (straight up) → (65, 150−50) = (65, 100)       -->
@@ -281,10 +281,10 @@
               <!--        end = (65+50·0.480, 150+50·(−0.877)) = (89.0, 106.2) ≈ (89,106)-->
               <!-- sweep=1 (CW in SVG): short ~29° arc from pointing-up to up-right ✓    -->
               <path d="M 65 100 A 50 50 0 0 1 89 106" fill="none" stroke="#8e44ad" stroke-width="1.8"/>
-              <text x="76" y="93" fill="#8e44ad" font-size="11" font-weight="600">α_i</text>
+              <text x="76" y="93" fill="#8e44ad" font-size="11" font-weight="600">α<tspan baseline-shift="sub" font-size="7">i</tspan></text>
 
               <text x="81" y="225" text-anchor="middle" fill="#555" font-size="10">Rotate z about x' by</text>
-              <text x="81" y="237" text-anchor="middle" fill="#555" font-size="10">α_i → final frame i</text>
+              <text x="81" y="237" text-anchor="middle" fill="#555" font-size="10">α<tspan baseline-shift="sub" font-size="7">i</tspan> → final frame i</text>
             </g>
 
             <!-- arrowhead defs -->
@@ -490,7 +490,7 @@
             <!-- FK equation annotation -->
             <rect x="20" y="15" width="215" height="65" rx="4" fill="#fffbf0" stroke="#f39c12" stroke-width="1"/>
             <text x="127" y="32" text-anchor="middle" fill="#e67e22" font-weight="700" font-size="11">Forward Kinematics</text>
-            <text x="127" y="48" text-anchor="middle" fill="#555" font-size="10">T_EEF = T₁·T₂·T₃·T₄·T₅·T₆·T₇</text>
+            <text x="127" y="48" text-anchor="middle" fill="#555" font-size="10">T<tspan baseline-shift="sub" font-size="7">EEF</tspan> = T₁·T₂·T₃·T₄·T₅·T₆·T₇</text>
             <text x="127" y="62" text-anchor="middle" fill="#555" font-size="10">One unique answer per joint config</text>
             <text x="127" y="74" text-anchor="middle" fill="#888" font-size="9">q = [q₁, q₂, q₃, q₄, q₅, q₆, q₇]ᵀ</text>
 
