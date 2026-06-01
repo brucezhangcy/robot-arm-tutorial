@@ -425,13 +425,11 @@
 
             <!-- robot_state_publisher -->
             <rect x="20" y="60" width="145" height="44" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
-            <text x="93" y="78" text-anchor="middle" fill="white" font-weight="700" font-size="12">robot_state</text>
-            <text x="93" y="93" text-anchor="middle" fill="white" font-weight="700" font-size="12">_publisher</text>
+            <text x="93" y="86" text-anchor="middle" fill="white" font-weight="700" font-size="11">robot_state_publisher</text>
 
             <!-- controller_manager -->
             <rect x="20" y="280" width="145" height="44" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
-            <text x="93" y="298" text-anchor="middle" fill="white" font-weight="700" font-size="12">controller</text>
-            <text x="93" y="312" text-anchor="middle" fill="white" font-weight="700" font-size="12">_manager</text>
+            <text x="93" y="306" text-anchor="middle" fill="white" font-weight="700" font-size="11">controller_manager</text>
 
             <!-- move_group -->
             <rect x="275" y="150" width="150" height="52" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
@@ -471,23 +469,20 @@
 
             <!-- move_group → rviz2 : planning scene -->
             <line x1="350" y1="150" x2="350" y2="94" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="354" y="125" fill="#27ae60" font-size="9">/monitored</text>
-            <text x="354" y="136" fill="#27ae60" font-size="9">_planning_scene</text>
+            <text x="354" y="126" fill="#27ae60" font-size="9">/planning_scene</text>
 
             <!-- user_node → move_group : MoveGroup action -->
             <line x1="530" y1="176" x2="425" y2="176" stroke="#e67e22" stroke-width="2" marker-end="url(#arr)"/>
-            <text x="444" y="168" fill="#e67e22" font-size="9">MoveGroup</text>
-            <text x="444" y="179" fill="#e67e22" font-size="9">action (goal)</text>
+            <text x="444" y="163" fill="#e67e22" font-size="9">MoveGroup</text>
+            <text x="444" y="186" fill="#e67e22" font-size="9">action (goal)</text>
 
             <!-- move_group → user_node : result/feedback -->
             <line x1="425" y1="192" x2="530" y2="192" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr2)"/>
             <text x="447" y="207" fill="#27ae60" font-size="9">result / feedback</text>
 
-            <!-- move_group → controller_manager : /joint_trajectory -->
-            <line x1="300" y1="202" x2="165" y2="285" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="170" y="250" fill="#27ae60" font-size="9">/joint_trajectory</text>
-            <text x="170" y="261" fill="#27ae60" font-size="9">_controller/</text>
-            <text x="170" y="272" fill="#27ae60" font-size="9">follow_joint_traj</text>
+            <!-- move_group → controller_manager : L-shaped path (down then left) -->
+            <path d="M 280 202 L 230 202 L 230 302 L 165 302" fill="none" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="234" y="252" fill="#27ae60" font-size="9">follow_joint_trajectory</text>
 
             <!-- controller_manager → franka_ros2 -->
             <line x1="93" y1="280" x2="93" y2="212" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
