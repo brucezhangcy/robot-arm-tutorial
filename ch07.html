@@ -68,13 +68,21 @@
   <main>
 
     <div class="chapter-abstract">
-      Chapters 4–6 controlled where the arm went or how fast it moved. Impedance control
-      answers a different question: <em>how does the arm feel when something pushes it?</em>
-      By commanding joint torques directly, you program the arm to behave like a virtual
-      spring-and-damper system — compliant enough to work safely alongside humans, yet
-      stiff enough to follow a trajectory accurately. This chapter is the technical
-      centerpiece of the tutorial; the concepts here underpin force-sensitive assembly,
-      surface-following, and physical human-robot interaction.
+      Chapters 4–6 told the arm <em>where</em> to go. Impedance control answers a different question: <em>what happens when something pushes the arm?</em> Should it rigidly resist the push? Completely give way? Or spring back gently? You get to choose — by programming the arm's virtual "springiness." This is what allows a robot to work safely next to people: if a human bumps into it, the arm yields instead of pushing back with full motor force.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Torque (reminder)</dt><dd>A rotational force — the turning force you apply to a wrench. For a robot joint, torque is what the motor actually outputs. Measured in Newton-meters (N·m).</dd>
+        <dt>Impedance</dt><dd>In robotics: how much the arm resists being pushed off its target position. High impedance = stiff and rigid. Low impedance = compliant and yielding.</dd>
+        <dt>Stiffness (K<sub>p</sub>)</dt><dd>How hard the arm pushes back when displaced. High stiffness means a small displacement causes a large restoring force — like a stiff spring.</dd>
+        <dt>Damping (K<sub>d</sub>)</dt><dd>How quickly the arm settles after a disturbance, without oscillating. Like shock absorbers in a car — they don't make the car stiff, they just stop it from bouncing.</dd>
+        <dt>Compliance</dt><dd>The opposite of stiffness. A "compliant" arm gives way when pushed — useful for working near people or when the arm might accidentally contact an object.</dd>
+        <dt>Mass-spring-damper</dt><dd>A standard mechanical model: a mass (M) attached to a spring (stiffness K) and a shock absorber (damping B). Impedance control makes the robot arm behave as if it were this mechanical system.</dd>
+        <dt>Critical damping</dt><dd>The exact damping value where the arm returns to its target position as fast as possible without overshooting or oscillating. The ideal "feel" for most applications.</dd>
+        <dt>Feed-forward</dt><dd>A control term that compensates for known, predictable forces (like gravity) before they even cause an error, rather than waiting for an error to appear and then correcting it.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════

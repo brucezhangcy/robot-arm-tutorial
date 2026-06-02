@@ -68,13 +68,21 @@
   <main>
 
     <div class="chapter-abstract">
-      This chapter integrates every concept from the tutorial into a single, working
-      pick-and-place application. You will design a finite state machine, construct the
-      full ROS&nbsp;2 node graph, plan a multi-waypoint end-effector trajectory, and
-      write the complete Python implementation. By the end you will have a program that
-      can reliably pick an object from a known pose, transport it, and set it down at a
-      goal location — in simulation, and (with the Chapter&nbsp;9 checklist) on the
-      real Panda hardware.
+      This is the chapter where everything comes together. You will write a complete program that makes the Panda arm pick up an object from one location and place it somewhere else — handling every step from opening the gripper to returning home. Nothing here is conceptually new; it combines the tools from Chapters 4–9 into one working application. Think of it as the final project for the tutorial.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Finite state machine (FSM)</dt><dd>A way to organize a complex task as a list of discrete steps ("states"). The program is always in exactly one state at a time. When certain conditions are met (success, failure, timeout), it transitions to the next state. Makes multi-step tasks easy to debug and restart at any step.</dd>
+        <dt>State</dt><dd>One step in the FSM. For example: APPROACH, GRASP, LIFT, TRANSPORT. Each state does exactly one thing and then checks whether to continue or report an error.</dd>
+        <dt>Transition</dt><dd>The switch from one state to another. Triggered by a condition: "gripper is closed AND object is detected → transition to LIFT."</dd>
+        <dt>Pre-grasp pose</dt><dd>A position above the target object, reached before the arm descends to grasp. This approach-from-above ensures the arm doesn't knock the object sideways as it arrives.</dd>
+        <dt>Cartesian descent</dt><dd>A straight downward movement in Cartesian space (constant x and y, decreasing z) from the pre-grasp pose to the grasp pose. Essential so the gripper arrives directly above the object.</dd>
+        <dt>Path fraction</dt><dd>The proportion of a Cartesian path that could be planned collision-free. A value below about 0.95 means part of the path is blocked — the move should be aborted and the scene checked.</dd>
+        <dt>Retract pose</dt><dd>A position above the place location, reached after releasing the object. Lifts the gripper clear before returning home, preventing it from dragging across the placed object.</dd>
+        <dt>Node graph</dt><dd>A diagram showing all the ROS 2 nodes active during the task and the topics/services/actions connecting them. Drawing the node graph before coding helps you plan the architecture.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════

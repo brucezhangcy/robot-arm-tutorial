@@ -69,12 +69,21 @@
   <main>
 
     <div class="chapter-abstract">
-      Kinematics is the study of motion without regard to forces. This chapter answers the two
-      fundamental questions every robot arm programmer must understand: <em>given a set of joint
-      angles, where is the end-effector?</em> (forward kinematics) and <em>given a desired
-      end-effector pose, what joint angles are needed?</em> (inverse kinematics). We develop the
-      mathematical machinery — coordinate frames, homogeneous transforms, Denavit-Hartenberg
-      parameters, and the Jacobian — and show how to compute them for the Panda in Python.
+      Imagine you move your shoulder and elbow in specific ways — you can predict exactly where your fingertip ends up. Now flip the question: given a point you want to touch, how do you angle your shoulder, elbow, and wrist to get your finger there? Those two questions — <em>joints → tip position</em> and <em>tip position → joints</em> — are exactly what this chapter teaches a robot to answer. Along the way we introduce the mathematical tools that make it possible. The math may look intimidating at first, but every formula has a plain-English meaning explained right next to it.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Kinematics</dt><dd>The study of <em>how</em> something moves, without worrying about the forces involved. For a robot arm: given the joint angles, where does the tip end up?</dd>
+        <dt>Coordinate frame</dt><dd>A set of three perpendicular axes (x, y, z) attached to a specific point — like a tiny 3D compass stuck to each link. All measurements are made relative to some frame.</dd>
+        <dt>Forward kinematics (FK)</dt><dd>Computing the tip's position and orientation from the joint angles. "Forward" = joints → tip. Always has exactly one answer.</dd>
+        <dt>Inverse kinematics (IK)</dt><dd>Computing the joint angles from a desired tip position. "Inverse" = tip position → joints. May have multiple answers (elbow-up vs elbow-down) or no answer (target out of reach).</dd>
+        <dt>DH parameters</dt><dd>Short for "Denavit-Hartenberg parameters" — a standard recipe of four numbers per joint that describes the geometry of a robot arm. We use a table of DH parameters to build the FK formula automatically.</dd>
+        <dt>Jacobian</dt><dd>A mathematical table (matrix) that says "if joint i rotates at speed X, the tip moves at speed Y in each direction." It's the gear ratio for the whole arm at once.</dd>
+        <dt>Singularity</dt><dd>A joint configuration where the arm loses the ability to move in one direction no matter how fast the joints spin. Like trying to steer a bike when the handlebars are completely folded — you're stuck.</dd>
+        <dt>Matrix</dt><dd>A rectangular grid of numbers. We use matrices to represent rotations and movements in a compact form. Multiplying two matrices is like combining two movements into one.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════
@@ -124,6 +133,10 @@
         \]
       </div>
 
+      <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
+        <em>In plain English:</em> "The transformation from frame 0 to frame 2 equals the transformation from frame 0 to frame 1, chained with the transformation from frame 1 to frame 2." Think of it like directions: (A→C) = (A→B) then (B→C).
+      </p>
+
       <p>
         For the 7-DOF Panda, computing the end-effector pose in the base frame is:
       </p>
@@ -133,6 +146,10 @@
           T_{\text{EEF}} = T_1(q_1)\, T_2(q_2)\, T_3(q_3)\, T_4(q_4)\, T_5(q_5)\, T_6(q_6)\, T_7(q_7)
         \]
       </div>
+
+      <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
+        <em>In plain English:</em> Chain all 7 joint transforms together (multiply the matrices left to right), one per joint, and the result tells you exactly where the gripper is and which way it's pointing. Each T<sub>i</sub>(q<sub>i</sub>) depends only on that joint's current angle.
+      </p>
 
       <p>
         Each \(T_i(q_i)\) is a \(4\times4\) matrix that depends on one joint angle.
@@ -636,6 +653,10 @@
           = J(\mathbf{q})\, \dot{\mathbf{q}}
         \]
       </div>
+
+      <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
+        <em>In plain English:</em> "Gripper velocity = Jacobian × joint speeds." The left side v is a 6-number list: the first 3 numbers are how fast the gripper moves in the x, y, z directions (in m/s), and the last 3 are how fast it rotates about those axes (in rad/s). The right side multiplies the Jacobian (a 6×7 table that changes with joint angles) by the 7 joint angular speeds. If you want the gripper to move at a specific velocity, rearrange the equation to find the joint speeds that produce it.
+      </p>
 
       <p>
         where \(\dot{\mathbf{p}} \in \mathbb{R}^3\) is the linear velocity of the end-effector and

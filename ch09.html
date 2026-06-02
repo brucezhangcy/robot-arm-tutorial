@@ -68,12 +68,21 @@
   <main>
 
     <div class="chapter-abstract">
-      Every chapter to this point could be completed entirely in simulation. This chapter
-      bridges the gap to physical hardware. You will learn what changes when the Gazebo
-      physics engine is replaced by a real Panda arm: network latency, real-time kernel
-      requirements, E-stop procedures, and the subtle but important ways the FCI differs
-      from the simulation interface. The transition checklist in this chapter is a practical
-      reference to return to before every hardware session.
+      Every chapter to this point was done entirely in simulation — safe and consequence-free. This chapter is where you connect to a real robot arm for the first time. The same Python code you wrote in Chapters 4–8 will run on the real hardware, but a few important things change: the robot is physically connected over Ethernet, the timing requirements are stricter, and a mistake can damage equipment or injure someone nearby. This chapter is your safety and setup guide for that transition.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>E-stop (Emergency Stop)</dt><dd>A large red button that immediately cuts power to all robot motors. Always keep one within arm's reach during hardware testing. When in doubt, press it.</dd>
+        <dt>FCI — Franka Control Interface</dt><dd>The low-level communication protocol between the control PC and the Panda arm. It runs over Ethernet at 1,000 messages per second and requires a dedicated network card.</dd>
+        <dt>Latency</dt><dd>The time delay between sending a command and the robot executing it. In simulation this is near zero; over Ethernet it's about 0.3–0.6 milliseconds. The robot's safety system monitors for late commands.</dd>
+        <dt>Real-time kernel</dt><dd>A modified version of Linux (called PREEMPT_RT) that guarantees your control loop runs every millisecond on time, even if other programs are running. Without it, Windows Update or a browser can delay your loop and trigger a protective stop.</dd>
+        <dt>PREEMPT_RT</dt><dd>The name of the Linux kernel patch that adds real-time scheduling. Verify it's installed with <code>uname -r</code> — the output must contain <code>-rt</code>.</dd>
+        <dt>Protective stop</dt><dd>An automatic safety halt triggered when the robot detects something unexpected: a missed timing deadline, an excessive force, or a joint limit violation. The arm freezes and must be manually reset via the Franka Desk web interface.</dd>
+        <dt>Dedicated NIC</dt><dd>"Network Interface Card" — a dedicated Ethernet port connected only to the Panda, not to the internet or other devices. Sharing it with other traffic causes timing jitter that triggers protective stops.</dd>
+        <dt>Gravity compensation</dt><dd>Torques the robot applies to counteract gravity and keep itself from drooping under its own weight. In simulation this is perfect; on real hardware there are small modeling errors that cause slight drift.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════

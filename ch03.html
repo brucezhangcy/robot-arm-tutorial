@@ -56,10 +56,21 @@
 
   <main>
     <div class="chapter-abstract">
-      Before touching real hardware, every motion should be tested in simulation. This chapter explains
-      the three simulation components — Gazebo, RViz, and MoveIt&nbsp;2 — how they communicate, and how to
-      launch them together for the Panda. You will learn to inspect the TF tree, verify controller
-      loading, and confirm that your development environment exactly mirrors what runs on real hardware.
+      Before you ever turn on a real robot arm, you should test your code in simulation — a safe virtual copy of the robot that runs entirely on your computer. Crashing in simulation costs nothing; a mistake on the real arm can damage equipment or injure people. This chapter explains the three programs that make up the simulation environment, how to start them with a single command, and what to check to confirm everything is working correctly.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Simulation</dt><dd>A virtual copy of the robot running on your computer. The same code that controls the simulation will (with small changes) control the real arm.</dd>
+        <dt>Gazebo</dt><dd>The physics simulation program. It pretends to be the real robot: it simulates gravity, inertia, motor dynamics, and contact forces. From ROS 2's point of view, Gazebo looks identical to real hardware.</dd>
+        <dt>RViz</dt><dd>A 3D visualization tool. It does <em>not</em> simulate physics — it just draws what it reads from ROS 2 topics. Use it to see where the robot is and what MoveIt 2 is planning.</dd>
+        <dt>URDF</dt><dd>"Unified Robot Description Format." A file that describes the robot's geometry (how long each link is, how the joints connect) and physical properties (mass, joint limits). It's like a blueprint for the robot.</dd>
+        <dt>XACRO</dt><dd>An extension of URDF that adds macros (reusable snippets), so you don't have to repeat the same numbers in many places. The Panda's model is written in XACRO.</dd>
+        <dt>TF tree</dt><dd>"Transform tree." A live record of where every link of the robot is relative to every other link, updated 1,000 times per second. Both RViz and MoveIt 2 read from it constantly.</dd>
+        <dt>Controller manager</dt><dd>The part of ros2_control that starts, stops, and switches between different motion controllers. Think of it as the control panel that decides which controller is active.</dd>
+        <dt>Launch file</dt><dd>A Python or XML script that starts multiple ROS 2 nodes at once with one command, instead of opening a separate terminal for each program.</dd>
+      </dl>
     </div>
 
     <section id="overview">

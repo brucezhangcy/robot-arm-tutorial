@@ -68,12 +68,21 @@
   <main>
 
     <div class="chapter-abstract">
-      Chapters 4 and 5 used MoveIt&nbsp;2 as a black box: send a goal, get a trajectory.
-      This chapter opens the box. You will learn how MoveIt&nbsp;2's internal pipeline
-      processes a goal — from scene representation and collision checking to planner
-      selection, constraint handling, and trajectory post-processing. Understanding this
-      pipeline lets you diagnose planning failures, tune planner parameters, enforce
-      task-specific motion constraints, and integrate custom planners.
+      In Chapters 4 and 5, you used MoveIt 2 like a black box: tell it where to go, get a motion back. This chapter opens the box and shows you what's happening inside. Understanding the internals is what turns "it sometimes fails and I don't know why" into "I can diagnose exactly what went wrong and fix it." You will also learn to add obstacles to the scene, apply motion constraints, and choose the right planner for each task.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Planning scene</dt><dd>MoveIt 2's model of the world: the robot itself plus all known obstacles (tables, walls, objects). If the planning scene doesn't match reality, the arm will plan paths that collide with real objects.</dd>
+        <dt>Collision object</dt><dd>A shape (box, cylinder, sphere, or mesh) added to the planning scene to represent an obstacle the arm must avoid. You add these in Python before planning.</dd>
+        <dt>OMPL</dt><dd>"Open Motion Planning Library" — the default collection of path-finding algorithms used by MoveIt 2. Think of it as the routing engine inside the GPS.</dd>
+        <dt>RRT / RRTConnect</dt><dd>"Rapidly-exploring Random Tree" — the most common planning algorithm. It grows a tree of random arm configurations from both start and goal until they connect, then shortens the path.</dd>
+        <dt>Constraint</dt><dd>A rule that every point in the planned motion must satisfy. Example: "keep the gripper pointing straight down throughout the whole move" (so a glass of water doesn't spill).</dd>
+        <dt>Collision checker</dt><dd>The part of MoveIt 2 that checks, for every candidate path point, whether the arm would collide with anything in the planning scene. Uses a library called FCL.</dd>
+        <dt>OctoMap</dt><dd>A 3D grid map built from sensor data (depth camera or lidar) that automatically adds real-world obstacles to the planning scene — useful when objects move unpredictably.</dd>
+        <dt>Trajectory post-processing</dt><dd>Steps applied to the raw planned path before execution: removing redundant waypoints, adding velocity/acceleration limits (time parameterization), and smoothing sharp corners.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════

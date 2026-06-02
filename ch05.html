@@ -68,13 +68,20 @@
   <main>
 
     <div class="chapter-abstract">
-      Chapter&nbsp;4 moved the arm by specifying where each joint should end up. This chapter
-      specifies where the <em>end-effector</em> should end up — its position in meters and its
-      orientation in space. You will learn how a 3D pose is represented mathematically, how
-      MoveIt&nbsp;2 solves the inverse kinematics to find the joint angles that produce it, and
-      how to command the arm to follow a straight-line path through Cartesian space. These tools
-      are essential for any task that requires precise tool placement: surface scanning, connector
-      insertion, and the pick-and-place capstone in Chapter&nbsp;10.
+      Chapter 4 moved the arm by saying "put joint 3 at 45°." This chapter is more natural: say "put the gripper at this exact point in space, pointing straight down." MoveIt 2 will figure out what joint angles to use. You will also learn how to make the gripper travel in a perfectly straight line — essential for picking up an object without knocking it sideways.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Pose</dt><dd>The complete description of where something is: its <em>position</em> (x, y, z in meters) AND its <em>orientation</em> (which way it's pointing). Position alone isn't enough — a screwdriver at the right position but the wrong angle is useless.</dd>
+        <dt>SE(3)</dt><dd>The mathematical name for "all possible positions and orientations in 3D space." Every robot pose is one point in SE(3). You don't need to know the math — just know it means "3D position + rotation."</dd>
+        <dt>Quaternion</dt><dd>A way to represent rotation using 4 numbers (w, x, y, z) that avoids a problem called "gimbal lock." Computers use quaternions internally; you can convert to/from more intuitive roll/pitch/yaw angles.</dd>
+        <dt>Gimbal lock</dt><dd>A problem with 3-angle rotation representations where two axes align and you lose one degree of freedom — the rotation becomes ambiguous. Quaternions avoid this entirely.</dd>
+        <dt>Cartesian path</dt><dd>A path where the gripper travels in a mathematically straight line through 3D space. Contrast with a joint-space plan, where the gripper traces whatever arc the joints naturally produce.</dd>
+        <dt>Path fraction</dt><dd>A number between 0 and 1 returned by compute_cartesian_path. A fraction of 1.0 means the entire straight-line path is collision-free and ready to execute. Below ~0.95 means part of the path is blocked.</dd>
+        <dt>Planning frame</dt><dd>The coordinate frame MoveIt 2 uses when planning. Poses must be expressed in this frame. Usually the robot's base frame (<code>panda_link0</code>).</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════

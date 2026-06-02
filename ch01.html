@@ -70,10 +70,23 @@
   <main>
 
     <div class="chapter-abstract">
-      This chapter introduces the Franka Emika Panda robot arm and the software ecosystem used throughout
-      the tutorial. By the end you will understand what each hardware component does, how ROS&nbsp;2
-      organizes robot software, and how the layers from physical motors to your Python code fit together.
-      You will also verify that your development environment is correctly installed.
+      A robot arm is a machine that can pick up, move, and place objects — just like a human arm, but programmable. This chapter introduces the specific arm we use (the Franka Panda), the software that makes it work, and how to get everything installed on your computer. <strong>No robotics background required.</strong> If you know a little Python and can use a terminal, you are ready to start.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Robot arm</dt><dd>A mechanical arm made of motors and rigid pieces that can be programmed to move to any position.</dd>
+        <dt>Joint</dt><dd>A motor-driven connection between two rigid pieces of the arm. Each joint adds one direction of movement (rotation). Think of your elbow or shoulder.</dd>
+        <dt>Link</dt><dd>One of the rigid pieces between joints — like the bones in your arm.</dd>
+        <dt>DOF — Degree of Freedom</dt><dd>The number of independent directions something can move. The Panda has 7 joints, so 7 DOF. A human arm has about 7 too.</dd>
+        <dt>Torque</dt><dd>A rotational force — the force used to turn a bolt with a wrench. Measured in Newton-meters (N·m).</dd>
+        <dt>End-effector (EEF)</dt><dd>The "hand" at the very tip of the arm — often a gripper that can open and close to pick up objects.</dd>
+        <dt>ROS 2</dt><dd>An open-source software framework that robot programs use to talk to each other. Like an operating system, but specifically for robots.</dd>
+        <dt>Node</dt><dd>One program in ROS 2. Each node does one specific job: read a sensor, plan a path, move a motor, etc.</dd>
+        <dt>Topic</dt><dd>A shared data channel in ROS 2. Nodes publish (send) data to a topic; other nodes subscribe (listen) to receive it.</dd>
+        <dt>FCI — Franka Control Interface</dt><dd>The low-level communication protocol between a PC and the Panda arm. It runs over Ethernet at 1,000 messages per second.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════════
@@ -471,9 +484,10 @@
             <line x1="165" y1="176" x2="275" y2="176" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
             <text x="188" y="170" fill="#0057b8" font-size="9">/joint_states</text>
 
-            <!-- move_group → rviz2 : planning scene -->
-            <line x1="350" y1="150" x2="350" y2="94" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="354" y="126" fill="#27ae60" font-size="9">/planning_scene</text>
+            <!-- move_group → rviz2 : planning scene (right side, clear of other arrows) -->
+            <path d="M 425 165 L 460 165 L 460 72 L 425 72" fill="none" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="471" y="118" fill="#27ae60" font-size="9">/planning</text>
+            <text x="471" y="130" fill="#27ae60" font-size="9">_scene</text>
 
             <!-- user_node → move_group : MoveGroup action -->
             <line x1="530" y1="176" x2="425" y2="176" stroke="#e67e22" stroke-width="2" marker-end="url(#arr)"/>

@@ -55,11 +55,21 @@
 
   <main>
     <div class="chapter-abstract">
-      The simplest way to command a robot arm is to specify a desired set of joint angles and let
-      the planner find a safe trajectory to reach them. This chapter explains how MoveIt&nbsp;2
-      translates a joint-space goal into executed motion: the planning pipeline, the
-      <code>JointTrajectoryController</code>, and the MoveGroup action interface. By the end you
-      will have Python code that moves the Panda to any joint configuration in simulation.
+      The simplest way to move a robot arm is to say "I want joint 1 at 45°, joint 2 at −30°…" and let the software figure out a safe path to get there. This chapter shows you how to do exactly that using Python and MoveIt 2. By the end, you will have working code that moves the Panda to any position you choose — entirely in simulation, so nothing can go wrong with real hardware.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Joint space</dt><dd>Describing the arm's configuration by listing the angle of each joint (7 numbers for the Panda). Like describing a person's pose by saying "shoulder at 45°, elbow at 90°."</dd>
+        <dt>Cartesian space</dt><dd>Describing the arm's configuration by the position and orientation of the gripper in 3D space (x, y, z + rotation). More intuitive for tasks, but harder for the computer to plan in directly.</dd>
+        <dt>Trajectory</dt><dd>A planned sequence of positions with timing — not just "where to go" but "go through these waypoints at these exact times." Like a flight plan with timestamps.</dd>
+        <dt>Waypoint</dt><dd>One target position in a trajectory. The arm passes through a series of waypoints, in order, to complete a motion.</dd>
+        <dt>C-space (configuration space)</dt><dd>The 7-dimensional mathematical space where every possible arm configuration is one point. The motion planner finds a path through this space that avoids obstacles.</dd>
+        <dt>PID controller</dt><dd>"Proportional-Integral-Derivative" — a standard algorithm that corrects the difference between where the arm is and where it should be, 1,000 times per second. It's what makes the arm actually follow the planned trajectory.</dd>
+        <dt>Planning pipeline</dt><dd>The sequence of steps MoveIt 2 runs to go from "I want to be at this joint configuration" to "here is a ready-to-execute trajectory." Roughly: plan → smooth → add timing → send to controller.</dd>
+        <dt>Action server</dt><dd>A ROS 2 pattern for long-running tasks. Your code sends a goal to an action server; the server sends back progress updates while it works, then a final result when done. MoveIt 2 uses an action server for motion planning.</dd>
+      </dl>
     </div>
 
     <section id="joint-vs-cartesian">

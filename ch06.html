@@ -68,14 +68,20 @@
   <main>
 
     <div class="chapter-abstract">
-      Chapters&nbsp;4 and 5 moved the arm by specifying a <em>destination</em> and letting
-      MoveIt&nbsp;2 plan the path. Velocity control is fundamentally different: you stream joint
-      velocities at 1&nbsp;kHz, deciding in real time how fast each joint moves at every moment.
-      This lower-level interface enables reactive behaviours — following a moving object,
-      complying with external forces, and supporting the impedance controller in Chapter&nbsp;7 —
-      that a planning-based approach cannot provide. This chapter explains the velocity control
-      loop, smooth motion profiles, and how the Jacobian lets you command end-effector velocities
-      directly.
+      Chapters 4 and 5 worked like a GPS: you give a destination, the system plans a route, and the arm follows it. Velocity control is different — it's like driving manually. Instead of planning a full path, your code sends a speed command to each joint 1,000 times per second, adjusting in real time based on what's happening around the arm. This makes the arm reactive: it can change direction in milliseconds if a camera spots an obstacle or a person reaches into its workspace.
+    </div>
+
+    <div class="callout callout-note">
+      <strong>New terms in this chapter — read these first</strong>
+      <dl style="margin-top:0.5rem;">
+        <dt>Velocity</dt><dd>How fast something is moving and in which direction. Speed is just the magnitude (how fast); velocity also includes direction. Measured in m/s (meters per second) for linear motion, or rad/s (radians per second) for rotational motion.</dd>
+        <dt>Velocity profile</dt><dd>A plan for how speed changes over time during a motion. You rarely want to instantly jump to full speed — that causes mechanical shock. A profile ramps up smoothly, cruises, then ramps back down.</dd>
+        <dt>Trapezoidal profile</dt><dd>The most common velocity profile shape: linear ramp up, constant-speed cruise, linear ramp down. The speed vs. time graph looks like a trapezoid (flat top, sloped sides).</dd>
+        <dt>S-curve profile</dt><dd>A smoother alternative to the trapezoidal profile where the ramp itself is gradual (S-shaped) rather than instant. Reduces vibration and mechanical wear.</dd>
+        <dt>Jacobian pseudoinverse</dt><dd>A mathematical operation that "inverts" the Jacobian to go backwards: given the gripper speed you want, compute the joint speeds that produce it. Written J⁺ (J-plus).</dd>
+        <dt>Damped least squares (DLS)</dt><dd>A safer version of the pseudoinverse that prevents joint speeds from exploding to infinity when the arm is near a singularity. Always use this instead of the plain pseudoinverse.</dd>
+        <dt>Streaming commands</dt><dd>Sending new velocity values to the controller at a fixed rate (e.g., 50 Hz) rather than sending a full trajectory at once. Your code runs a loop that publishes velocities continuously.</dd>
+      </dl>
     </div>
 
     <!-- ════════════════════════════════════════════════
