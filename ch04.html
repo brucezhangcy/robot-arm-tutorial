@@ -166,6 +166,10 @@
         </figcaption>
       </figure>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — motion planning as GPS navigation:</strong> When Google Maps plans a route, it doesn't move in a straight line across a map — it navigates a graph of real roads, avoids closed roads and traffic jams, and respects one-way streets. MoveIt 2 does the same thing in "joint-angle space": the 7 joint angles define a 7-dimensional space, and the planner finds a path through that space that avoids all collisions and respects joint limits. The <strong>PID controller</strong> at the end is like cruise control: once the route is planned, it automatically adjusts the throttle every millisecond to stay exactly on track.
+      </div>
+
       <h3>4.2.1 The Configuration Space (C-space)</h3>
       <p>
         The planner does not work in 3D Euclidean space. It works in <strong>C-space</strong>
@@ -563,6 +567,17 @@ def main():
 if __name__ == '__main__':
     main()</code></pre>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 4 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>Joint space</strong> means commanding the 7 joint angles directly; <strong>Cartesian space</strong> means commanding a position and orientation in 3D. Joint space is simpler; Cartesian space is more intuitive for task-level goals.</li>
+        <li>The MoveIt 2 <strong>planning pipeline</strong> automatically handles the hard parts: sampling a collision-free path through the 7D joint space, simplifying it, and assigning realistic speed/acceleration limits.</li>
+        <li>The <strong>JointTrajectoryController</strong> tracks the planned path using a PID loop running at 1 kHz — one independent PID per joint.</li>
+        <li>You can bypass MoveIt 2 entirely and send trajectories directly to the controller for timing-critical applications where you want exact control over when each waypoint is reached.</li>
+      </ul>
+    </div>
 
     <section id="exercises">
       <h2>Exercises</h2>

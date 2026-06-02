@@ -50,6 +50,7 @@
           <li><a href="#node-graph">10.3 Full Node Graph</a></li>
           <li><a href="#trajectory">10.4 EEF Trajectory</a></li>
           <li><a href="#implementation">10.5 Full Implementation</a></li>
+          <li><a href="#isaac-sim">10.6 Bonus: Isaac Sim Visualization</a></li>
           <li><a href="#exercises">Exercises</a></li>
           <li><a href="#references">References</a></li>
         </ul>
@@ -649,6 +650,251 @@ if __name__ == '__main__':
         complete the Chapter&nbsp;9 safety checklist, set <code>VEL_SCALE = 0.05</code>
         for the first run, and keep your hand on the E-stop. Increase speed only after
         confirming the full sequence in simulation.
+      </div>
+    </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 10 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li>A <strong>finite state machine (FSM)</strong> structures a multi-step task into discrete, atomic states — each state does exactly one thing, and transitions are triggered by success or failure. This makes complex sequences easy to debug and safe to run on real hardware.</li>
+        <li>The key rule for pick-and-place: always approach from <strong>above</strong> (pre-grasp pose) before descending straight down to the grasp — going directly to the grasp pose risks knocking the object sideways.</li>
+        <li>The motion primitives from Chapters 4–8 (joint goal, Cartesian path, gripper action) are assembled here into a complete, working task. Nothing in this chapter is new machinery — it is integration.</li>
+        <li>On real hardware: start at <strong>10% speed</strong>, verify each state transition manually, keep your hand on the E-stop, and only increase speed after the full sequence runs reliably in simulation.</li>
+      </ul>
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         §10.6  Bonus: Isaac Sim Visualization
+         ════════════════════════════════════════════════ -->
+    <section id="isaac-sim">
+      <h2>10.6 Bonus Project: Visualizing Pick &amp; Place in Isaac Sim</h2>
+
+      <p>
+        Everything you built in §10.5 runs inside <strong>Gazebo</strong> — a fast, lightweight
+        physics simulator. Gazebo is ideal for testing control code because it integrates directly
+        with ros2_control and runs on any laptop. But it has a visible limitation: the 3D rendering
+        looks like a game engine from 2005.
+      </p>
+
+      <p>
+        <strong>NVIDIA Isaac Sim</strong> is a different kind of simulator. Instead of cartoon-style
+        graphics, it uses <em>path-tracing</em> (the same technique used in movie visual effects)
+        to produce photorealistic images with real lighting, shadows, reflections, and material
+        finishes. In the image below, it is often impossible to tell an Isaac Sim render from a
+        real photograph.
+      </p>
+
+      <div class="callout callout-note">
+        <strong>Why does photorealistic rendering matter for robotics?</strong> If you want to train
+        a neural network to recognize whether the gripper has grabbed a cube, you need thousands of
+        example images. Filming a real robot picking up objects is slow and expensive.
+        Isaac Sim generates those images automatically and, because the rendering looks nearly
+        identical to real camera footage, a model trained on synthetic images actually works on
+        real hardware. This technique is called <em>sim-to-real transfer</em>.
+      </div>
+
+      <h3>10.6.1 What You Need</h3>
+      <ul>
+        <li><strong>GPU:</strong> NVIDIA RTX 20xx or newer (ray-tracing hardware is required for photorealistic mode)</li>
+        <li><strong>Isaac Sim 4.x:</strong> Free download from NVIDIA — search "Isaac Sim" on developer.nvidia.com and install via the Omniverse Launcher</li>
+        <li><strong>Python 3.10:</strong> Isaac Sim ships its own Python environment; you run scripts inside it</li>
+        <li><strong>Disk space:</strong> ~30 GB for Isaac Sim + assets</li>
+      </ul>
+
+      <div class="callout callout-tip">
+        <strong>No GPU?</strong> Isaac Sim can run in CPU-only mode with basic rendering — it is slower and less photorealistic, but the Python API is identical. You can still follow all the code examples below.
+      </div>
+
+      <h3>10.6.2 Step 1 — Load the Panda Robot</h3>
+
+      <p>
+        Isaac Sim includes a built-in Franka Panda asset. The code below creates a simulation
+        world, loads the robot, adds a red cube, and starts the physics engine. Run it in
+        Isaac Sim's built-in <strong>Script Editor</strong> (menu: Window → Script Editor).
+      </p>
+
+      <p>
+        Before reading the code, here are the new terms you will see:
+      </p>
+      <ul>
+        <li><strong>prim_path</strong> — a file-system-like path that identifies every object in the Isaac Sim scene (e.g., <code>/World/Panda</code>). Think of it like a folder path on your computer.</li>
+        <li><strong>World</strong> — the Isaac Sim equivalent of a Gazebo world: it holds all objects and runs the physics simulation step by step.</li>
+        <li><strong>DynamicCuboid</strong> — a physics-enabled cube that responds to gravity and collisions (as opposed to a static prop).</li>
+      </ul>
+
+      <div class="code-header">
+        <span>scene_setup.py — run in Isaac Sim Script Editor</span>
+      </div>
+      <pre><code class="language-python">
+# Step 1: Create the simulation app (opens the Isaac Sim window)
+from omni.isaac.kit import SimulationApp
+simulation_app = SimulationApp({"headless": False})  # headless=True for no GUI
+
+import numpy as np
+from omni.isaac.core import World
+from omni.isaac.franka import Franka
+from omni.isaac.core.objects import DynamicCuboid
+
+# ── Create the world ─────────────────────────────────────
+world = World(stage_units_in_meters=1.0)   # 1 unit = 1 metre
+
+# ── Add the Franka Panda robot ────────────────────────────
+# Isaac Sim knows the Panda URDF; just give it a scene path
+robot = world.scene.add(
+    Franka(prim_path="/World/Panda", name="panda")
+)
+
+# ── Add a red cube to pick up ─────────────────────────────
+# Position: 0.5 m in front of the robot, 2.5 cm above the floor
+cube = world.scene.add(
+    DynamicCuboid(
+        prim_path="/World/RedCube",
+        name="red_cube",
+        position=np.array([0.5, 0.0, 0.025]),   # x, y, z in metres
+        scale=np.array([0.05, 0.05, 0.05]),      # 5 cm × 5 cm × 5 cm
+        color=np.array([1.0, 0.0, 0.0]),         # R, G, B (red)
+    )
+)
+
+# ── Reset the scene to apply all settings ─────────────────
+world.reset()
+print("Scene ready. Robot and cube loaded.")
+
+# ── Run 50 physics steps so the scene settles ────────────
+for _ in range(50):
+    world.step(render=True)
+</code></pre>
+
+      <p>
+        After running this, you should see the Panda arm in its home configuration with a red
+        cube sitting on the floor in front of it, exactly as in the Gazebo version.
+      </p>
+
+      <h3>10.6.3 Step 2 — Replay the Pick Trajectory</h3>
+
+      <p>
+        Isaac Sim lets you set joint angles directly with
+        <code>robot.set_joint_positions()</code>. The function below smoothly interpolates the
+        arm from its current configuration to a target joint configuration — the same waypoints
+        used in §10.5.
+      </p>
+
+      <div class="callout callout-note">
+        <strong>What are these joint angle numbers?</strong> Each number is the angle of one
+        joint in radians. The Panda has 7 joints, so each configuration is a list of 7 numbers.
+        For reference: 0.785 rad ≈ 45°, 1.571 rad ≈ 90°, 2.356 rad ≈ 135°.
+        The home pose <code>[0, −0.785, 0, −2.356, 0, 1.571, 0.785]</code> is the standard
+        Panda ready position — arm slightly bent, pointing upward.
+      </div>
+
+      <div class="code-header">
+        <span>replay_trajectory.py — run after scene_setup.py</span>
+      </div>
+      <pre><code class="language-python">
+# Joint configurations matching the §10.5 pick-and-place poses
+HOME_JOINTS      = [0.0, -0.785, 0.0, -2.356, 0.0,  1.571, 0.785]
+PRE_GRASP_JOINTS = [0.0,  0.200, 0.0, -2.000, 0.0,  2.200, 0.785]
+GRASP_JOINTS     = [0.0,  0.350, 0.0, -1.850, 0.0,  2.200, 0.785]
+PLACE_JOINTS     = [1.57, 0.200, 0.0, -2.000, 0.0,  2.200, 0.785]
+
+def move_to_joints(robot, target_joints, steps=120):
+    """
+    Smoothly interpolate from the current joint positions to the target.
+    'steps' controls how many physics frames the motion takes.
+    120 steps ≈ 2 seconds at 60 Hz rendering.
+    """
+    current = robot.get_joint_positions()
+    target  = np.array(target_joints)
+    for i in range(steps):
+        t = (i + 1) / steps          # goes from 1/steps to 1.0
+        interpolated = current + t * (target - current)
+        robot.set_joint_positions(interpolated)
+        world.step(render=True)      # advance physics + redraw
+
+# ── Execute the pick-and-place sequence ──────────────────
+print("Opening gripper...")
+robot.gripper.open()
+for _ in range(30): world.step(render=True)
+
+print("Moving to pre-grasp (above the cube)...")
+move_to_joints(robot, PRE_GRASP_JOINTS)
+
+print("Descending straight down to grasp pose...")
+move_to_joints(robot, GRASP_JOINTS)
+
+print("Closing gripper...")
+robot.gripper.close()
+for _ in range(30): world.step(render=True)
+
+print("Lifting the cube...")
+move_to_joints(robot, PRE_GRASP_JOINTS)
+
+print("Transporting to place location...")
+move_to_joints(robot, PLACE_JOINTS)
+
+print("Opening gripper to release...")
+robot.gripper.open()
+for _ in range(30): world.step(render=True)
+
+print("Returning home...")
+move_to_joints(robot, HOME_JOINTS)
+
+print("Sequence complete!")
+</code></pre>
+
+      <h3>10.6.4 What to Observe</h3>
+
+      <p>When you run this in Isaac Sim, compare it to the Gazebo version:</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Gazebo</th>
+            <th>Isaac Sim</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Visual quality</td>
+            <td>Flat colors, simple lighting</td>
+            <td>Photorealistic — real shadows, reflections, material sheen</td>
+          </tr>
+          <tr>
+            <td>Physics engine</td>
+            <td>ODE/Bullet (CPU)</td>
+            <td>PhysX (GPU-accelerated, handles soft bodies and deformables)</td>
+          </tr>
+          <tr>
+            <td>ROS 2 integration</td>
+            <td>Native — zero extra setup</td>
+            <td>Via ROS 2 bridge (extra configuration)</td>
+          </tr>
+          <tr>
+            <td>Camera simulation</td>
+            <td>Basic RGB image</td>
+            <td>Physically correct sensor noise, depth, HDR</td>
+          </tr>
+          <tr>
+            <td>Best for</td>
+            <td>Testing control code fast</td>
+            <td>Generating training images, testing vision systems</td>
+          </tr>
+          <tr>
+            <td>GPU required</td>
+            <td>No</td>
+            <td>Yes (RTX recommended for ray-traced mode)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-tip">
+        <strong>Try this:</strong> Switch the camera to the gripper's perspective in Isaac Sim
+        (add a Camera prim as a child of <code>/World/Panda/panda_hand</code>) and watch the
+        pick-and-place from the robot's point of view. This is the camera view a
+        machine-learning model would see during training — and the reason photorealistic
+        simulation is so valuable for robotics research.
       </div>
     </section>
 

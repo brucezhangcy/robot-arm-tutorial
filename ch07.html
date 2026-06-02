@@ -134,6 +134,10 @@
     <section id="msd-model">
       <h2>7.2 The Mass-Spring-Damper Model</h2>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — the mass-spring-damper as a car suspension:</strong> Your car's suspension has three components: the wheel's mass (M), the coil spring (K), and the shock absorber (B). Hit a pothole and the wheel drops fast. The spring pushes it back up; the shock absorber slows that rebound so the car doesn't bounce forever. Impedance control programs the same three-component behavior into the robot arm: M controls how it reacts to sudden forces, K controls how firmly it returns to the target position, and B controls how quickly it settles without oscillating. Tune all three to make the arm feel exactly as stiff or compliant as the task requires.
+      </div>
+
       <p>
         The mechanical model behind impedance control is a mass \(M\) connected to a fixed
         wall by a spring with stiffness constant \(K\) and a dashpot with damping constant
@@ -737,6 +741,17 @@ def main():
 if __name__ == '__main__':
     main()</code></pre>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 7 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>Impedance control</strong> sits between pure position control (rigid) and pure force control (passive). It lets you program how "springy" the arm feels: stiff for precision, compliant for safe human contact.</li>
+        <li>The <strong>mass–spring–damper model</strong> (M·ẍ + B·ẋ + K·x = F<sub>ext</sub>) is the target behavior. The controller computes torques that make the real arm behave <em>as if</em> it were this mechanical system.</li>
+        <li><strong>Stiffness K<sub>p</sub></strong> determines how hard the arm resists being pushed off its target pose. <strong>Damping K<sub>d</sub></strong> prevents oscillation — tune to K<sub>d</sub> ≈ 2√(M·K<sub>p</sub>) for a critically damped response.</li>
+        <li>This requires the <strong>torque interface</strong> — not available from the JointTrajectoryController, but available on real Panda hardware and through franka_ros2's CartesianImpedanceController in Gazebo.</li>
+      </ul>
+    </div>
 
     <!-- Exercises -->
     <section id="exercises" class="exercises">

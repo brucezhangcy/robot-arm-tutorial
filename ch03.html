@@ -80,6 +80,10 @@
             is active — Gazebo in simulation, the real FCI on hardware.</li>
       </ul>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — simulation as a flight simulator:</strong> Pilots train in a flight simulator for hundreds of hours before flying a real aircraft. Crashing in the simulator costs nothing; crashing a real plane is catastrophic. We treat Gazebo exactly the same way: test every motion sequence, stress-test edge cases, and confirm the control code is correct — all before the real arm is ever switched on. The key difference from a video game is that Gazebo uses real physics equations (mass, inertia, gravity, contact forces), so the behavior you observe in simulation closely matches real hardware.
+      </div>
+
       <!-- Figure 3.1: Simulation Component Map -->
       <figure id="fig3-1">
         <div class="figure-inner">
@@ -513,6 +517,17 @@ ros2 control list_hardware_components
         inconsistent state requiring a full restart.
       </div>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 3 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>Gazebo</strong> simulates physics; <strong>RViz</strong> visualizes; <strong>MoveIt 2</strong> plans. These are three separate programs — each does exactly one job, and none can replace the others.</li>
+        <li>The <strong>URDF/XACRO model</strong> describes the robot's geometry, mass, and joint limits so Gazebo knows how the arm behaves physically; XACRO is URDF with macros so you don't repeat yourself.</li>
+        <li>The <strong>TF tree</strong> is a live record of where every link is relative to every other link, updated 1,000 times per second — RViz and MoveIt 2 read from it constantly.</li>
+        <li>One <code>ros2 launch</code> command starts the whole stack; if something goes wrong, check which layer (Gazebo, ros2_control, or MoveIt 2) is failing first.</li>
+      </ul>
+    </div>
 
     <section id="exercises">
       <h2>Exercises</h2>

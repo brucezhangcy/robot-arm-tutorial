@@ -84,6 +84,10 @@
     <section id="why-velocity">
       <h2>6.1 Why Velocity Control?</h2>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — velocity control vs. position control in a car:</strong> Position control is like programming a self-driving car with a fixed route: you hand it the full path, press go, and it executes without your input. Velocity control is like driving yourself: you continuously check the road and adjust your speed in real time — brake when something appears, accelerate when the road clears. For robot arms, velocity control is essential whenever the environment can change mid-motion, such as when a camera is detecting objects or a person is guiding the arm by hand.
+      </div>
+
       <p>
         Position control hands a trajectory to the <code>JointTrajectoryController</code> and
         waits for it to finish. Once the goal is dispatched, you have no low-level influence over
@@ -769,6 +773,17 @@ def main():
 if __name__ == '__main__':
     main()</code></pre>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 6 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>Velocity control</strong> keeps the motion decision in your code every tick — instead of dispatching a plan and waiting, you continuously publish the speed you want and can react to changes instantly.</li>
+        <li>A <strong>trapezoidal velocity profile</strong> protects the hardware by ramping up smoothly, cruising at max speed, then ramping down — it avoids the mechanical shock of instantly commanding max speed from rest.</li>
+        <li>The <strong>Jacobian pseudoinverse</strong> converts a desired end-effector velocity (in 3D Cartesian space) into the joint velocities that produce it — this is how you drive the gripper straight instead of each joint independently.</li>
+        <li><strong>Damped least-squares (DLS)</strong> prevents joint velocity commands from exploding near singularities by trading a small amount of accuracy for bounded joint speeds — always use it in Jacobian-based control.</li>
+      </ul>
+    </div>
 
     <!-- ════════════════════════════════════════════════
          Exercises

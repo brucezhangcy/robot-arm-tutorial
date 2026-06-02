@@ -82,6 +82,10 @@
     <section id="sim-vs-real">
       <h2>9.1 Simulation vs. Real Hardware</h2>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — sim-to-real as a driving test:</strong> Learning to drive in a simulator is valuable, but a real car has details that simulators don't fully capture: road texture, wind gusts, the weight of the steering wheel, exact brake pedal feel. Moving from Gazebo to the real Panda is similar — your code runs identically, but real physics shows up: encoder noise, gravity-model drift, 0.5 ms network latency over Ethernet, and safety reflexes that will stop the arm if a torque limit is exceeded. The solution is the same as a driving test: go slowly, stay alert, and have your hand near the E-stop.
+      </div>
+
       <p>
         Gazebo faithfully emulates the ROS&nbsp;2 interface so that the same Python code
         runs in simulation and on hardware. However, several important differences emerge
@@ -645,6 +649,17 @@ def main():
 if __name__ == '__main__':
     main()</code></pre>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 9 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li>The same Python code runs in simulation and on real hardware — the only change is a ROS 2 parameter selecting which backend (Gazebo vs. FCI) to use. This "sim-to-hardware switch pattern" is how professional teams validate code before touching the real arm.</li>
+        <li>The real arm needs a <strong>dedicated Gigabit Ethernet NIC</strong> connected directly to the Panda base — shared network cards cause millisecond-level jitter that triggers a protective stop.</li>
+        <li>The <strong>PREEMPT_RT real-time kernel</strong> is required so that the 1 kHz control loop is never delayed by other Linux processes. Verify with <code>uname -r</code> — the output must contain <code>-rt</code>.</li>
+        <li>Always start at <strong>10% speed</strong> on first hardware runs, watch every state, and keep your hand on the E-stop. Only increase speed after each step proves reliable in simulation at full speed.</li>
+      </ul>
+    </div>
 
     <!-- Exercises -->
     <section id="exercises" class="exercises">

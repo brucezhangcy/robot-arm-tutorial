@@ -293,6 +293,10 @@
     <section id="pose-goals">
       <h2>5.3 Pose Goals in MoveIt&nbsp;2</h2>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — Cartesian control as a crane operator:</strong> An overhead crane operator doesn't say "rotate the left motor 4.3 revolutions and the right motor 2.1 revolutions." They say "move the hook 2 meters to the left." The crane's internal system figures out which motors to turn by how much. Cartesian control works the same way for the robot arm: you say "put the gripper at position (0.5 m, 0.1 m, 0.3 m) facing downward," and MoveIt 2 uses inverse kinematics to figure out what joint angles achieve that.
+      </div>
+
       <p>
         Setting a Cartesian pose goal instead of a joint goal requires one extra step internally:
         MoveIt&nbsp;2 must run <strong>inverse kinematics (IK)</strong> to find joint angles
@@ -855,6 +859,17 @@ if __name__ == '__main__':
         <code>compute_cartesian_path()</code> is called from a poor starting configuration.
       </div>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 5 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>SE(3)</strong> is just the mathematical name for "a position in 3D + an orientation." Every robot pose — where the gripper is and which way it's pointing — lives in SE(3).</li>
+        <li><strong>Quaternions</strong> represent orientation as 4 numbers instead of 3 Euler angles; they avoid "gimbal lock" (a situation where two rotation axes align and you lose one degree of freedom) and blend smoothly for interpolation.</li>
+        <li>For a <strong>straight-line path</strong> (like descending vertically onto a part), use <code>compute_cartesian_path()</code> — it guarantees the gripper travels in a straight line in 3D, which a joint-space plan does not.</li>
+        <li>Always check the <strong>fraction</strong> returned: if it is below ~0.95, part of the straight line is blocked and you should adjust the scene or approach direction before executing.</li>
+      </ul>
+    </div>
 
     <!-- Exercises -->
     <section id="exercises">

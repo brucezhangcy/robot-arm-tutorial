@@ -166,6 +166,10 @@
         </tbody>
       </table>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — DH parameters as driving directions:</strong> Instead of giving someone your GPS address, imagine describing how to reach it from a starting point: "Walk 2 meters forward, turn left 90°, walk 1 meter, turn right 45°…" Each step uses only two numbers — a distance and an angle. DH parameters do exactly this for robot links: four numbers per joint describe how to step from one joint's coordinate frame to the next. The whole arm's geometry is captured as a short table of these numbers.
+      </div>
+
       <p>
         For a revolute joint, \(a_i\), \(\alpha_i\), and \(d_i\) are fixed constants of the
         mechanism's geometry; only \(\theta_i = q_i\) changes as the joint moves.
@@ -358,6 +362,10 @@
          ════════════════════════════════════ -->
     <section id="fk">
       <h2>2.3 Forward Kinematics</h2>
+
+      <div class="callout callout-analogy">
+        <strong>Analogy — FK and IK as two directions of the same puzzle:</strong> Hold out your arm and move your shoulder 45° and your elbow 30°. You can work out exactly where your fingertip ends up — that's <em>forward kinematics</em>: given joint angles → find tip position. Now try the reverse: someone places a doorknob at a specific point in space and asks you to touch it. You have to figure out where to angle your shoulder, elbow, and wrist. That's <em>inverse kinematics</em> — it's much harder because there are often multiple solutions (you can reach the same point with your elbow high or low), and sometimes no solution at all (the point is out of reach).
+      </div>
 
       <p>
         <strong>Forward kinematics</strong> (FK) is the function
@@ -610,6 +618,10 @@
          ════════════════════════════════════ -->
     <section id="jacobian">
       <h2>2.5 The Jacobian</h2>
+
+      <div class="callout callout-analogy">
+        <strong>Analogy — the Jacobian as a bicycle gear system:</strong> When you pedal a bicycle, the gear ratio translates your pedaling speed into the wheel's speed. If you are in a very low gear, pedaling fast barely moves the wheel; in a high gear, one pedal revolution sends you far. The Jacobian is the "gear ratio" for a robot arm: it translates how fast each joint is spinning into how fast the tip moves in 3D space. Near a singularity, the Jacobian is like being stuck in neutral — even spinning joints at full speed produces no useful tip motion in one direction.
+      </div>
 
       <p>
         The <strong>Jacobian matrix</strong> \(J(\mathbf{q}) \in \mathbb{R}^{6 \times 7}\) is the
@@ -1192,6 +1204,18 @@ if __name__ == '__main__':
         <code>python3 jacobian_numerical.py</code>.
       </div>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 2 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li><strong>Coordinate frames</strong> are the x/y/z axes attached to each robot link — every position measurement only makes sense relative to a frame.</li>
+        <li><strong>DH parameters</strong> give us a 4-number recipe per joint to describe how the geometry steps from one link's frame to the next; for the Panda's 7 joints, this produces a 7-row table.</li>
+        <li><strong>Forward kinematics</strong> (FK) is straightforward: multiply 7 DH matrices to get the gripper's exact position and orientation from any set of joint angles.</li>
+        <li><strong>Inverse kinematics</strong> (IK) goes the other direction — given a desired gripper pose, find the joint angles that achieve it. Multiple solutions may exist; MoveIt 2 picks the closest one to the current configuration.</li>
+        <li>The <strong>Jacobian</strong> is the 6×7 "gear ratio" matrix that converts joint speeds into gripper speed; it is also the first tool for detecting singularities (configurations where the arm loses the ability to move in one direction).</li>
+      </ul>
+    </div>
 
     <!-- ════════════════════════════════════
          Exercises

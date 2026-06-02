@@ -284,6 +284,10 @@
         a well-defined API.
       </p>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — ROS 2 as a group chat:</strong> Think of ROS 2 like the messaging apps on your phone. Each app (camera, maps, music player) runs independently, but they all share data through the phone's notification system. In ROS 2, each <em>node</em> is like one app: the camera node streams images, the planner node figures out paths, and the controller node moves the joints — none of them need to know how the others work internally. If you had to wire all of this together by hand with custom networking code, you would spend months on plumbing before you could move a single joint.
+      </div>
+
       <h3>1.2.1 Core Concepts</h3>
       <p>ROS&nbsp;2 organizes communication into four primitives:</p>
       <ul>
@@ -866,6 +870,17 @@ if __name__ == '__main__':
         <code>source /opt/ros/humble/setup.bash</code> first.
       </p>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 1 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li>The Franka Panda has <strong>7 rotating joints</strong>, each with a built-in force sensor that measures forces 1,000 times per second — this makes it both precise and safe near people.</li>
+        <li><strong>ROS 2</strong> is a communication framework (not an operating system) that lets separate programs — called nodes — exchange data using Topics (streams), Services (one-shot requests), and Actions (long tasks with progress updates).</li>
+        <li>The <strong>software stack</strong> has clear layers: your Python goal → MoveIt 2 plans a path → ros2_control runs the PID loops → franka_ros2 talks to the hardware → motors move. Each layer speaks in a cleaner language than the one below.</li>
+        <li>Your environment is installed and the Gazebo simulation is verified — you are ready to write control code in Chapter 2.</li>
+      </ul>
+    </div>
 
     <!-- ════════════════════════════════════════════════════
          §Exercises

@@ -161,6 +161,10 @@
         </figcaption>
       </figure>
 
+      <div class="callout callout-analogy">
+        <strong>Analogy — MoveIt 2 as a GPS for robot arms:</strong> When you use Google Maps, you don't specify which roads to take — you just say "go to this address." Maps finds a safe route, avoids road closures, and respects one-way streets. MoveIt 2 works the same way for robot arms: you say "put the gripper here," and MoveIt 2 finds a path through the 7-dimensional joint space that avoids all obstacles and respects joint limits. The <code>move_group</code> node is like the Maps server — it receives your destination request, runs the route-finding algorithm, and returns a step-by-step path.
+      </div>
+
       <p>
         When you call <code>arm.plan()</code> in Python, the request travels as a ROS&nbsp;2
         action goal to <code>move_group</code>, which then:
@@ -693,6 +697,17 @@ def main():
 if __name__ == '__main__':
     main()</code></pre>
     </section>
+
+    <!-- Chapter Summary -->
+    <div class="callout callout-summary">
+      <strong>Chapter 8 Summary — What you learned:</strong>
+      <ul style="margin:0.5rem 0 0 1rem;">
+        <li>Everything in MoveIt 2 passes through the central <strong><code>move_group</code> node</strong> — your Python code, RViz's interactive markers, and any other client all send requests to the same node.</li>
+        <li>The <strong>planning scene</strong> is MoveIt 2's model of the world (robot + all obstacles). If the scene is wrong, the planner will either collide in real life or refuse to plan to perfectly reachable goals.</li>
+        <li>Different <strong>motion planners</strong> suit different situations: RRTConnect is fast for open spaces; LBKPIECE handles narrow passages better; Pilz CIRC/LIN gives geometric straight-line and arc paths for industrial applications.</li>
+        <li><strong>Constraints</strong> let you add rules to any plan — keep the end-effector upright while transporting a glass of water, stay within a bounding box, or hold a specific orientation throughout the motion.</li>
+      </ul>
+    </div>
 
     <!-- Exercises -->
     <section id="exercises" class="exercises">

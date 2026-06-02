@@ -366,6 +366,20 @@ p code, li code {
 
 .callout-tip strong { color: #1e8449; }
 
+.callout-summary {
+  background: #f5f0ff;
+  border-left: 4px solid #7c3aed;
+}
+
+.callout-summary strong { color: #5b21b6; }
+
+.callout-analogy {
+  background: #fff7ed;
+  border-left: 4px solid #ea580c;
+}
+
+.callout-analogy strong { color: #c2410c; }
+
 /* ----- Tables ----- */
 table {
   width: 100%;
