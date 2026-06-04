@@ -71,18 +71,28 @@
       Chapter 4 moved the arm by saying "put joint 3 at 45°." This chapter is more natural: say "put the gripper at this exact point in space, pointing straight down." MoveIt 2 will figure out what joint angles to use. You will also learn how to make the gripper travel in a perfectly straight line — essential for picking up an object without knocking it sideways.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Pose</dt><dd>The complete description of where something is: its <em>position</em> (x, y, z in meters) AND its <em>orientation</em> (which way it's pointing). Position alone isn't enough — a screwdriver at the right position but the wrong angle is useless.</dd>
-        <dt>SE(3)</dt><dd>The mathematical name for "all possible positions and orientations in 3D space." Every robot pose is one point in SE(3). You don't need to know the math — just know it means "3D position + rotation."</dd>
-        <dt>Quaternion</dt><dd>A way to represent rotation using 4 numbers (w, x, y, z) that avoids a problem called "gimbal lock." Computers use quaternions internally; you can convert to/from more intuitive roll/pitch/yaw angles.</dd>
-        <dt>Gimbal lock</dt><dd>A problem with 3-angle rotation representations where two axes align and you lose one degree of freedom — the rotation becomes ambiguous. Quaternions avoid this entirely.</dd>
-        <dt>Cartesian path</dt><dd>A path where the gripper travels in a mathematically straight line through 3D space. Contrast with a joint-space plan, where the gripper traces whatever arc the joints naturally produce.</dd>
-        <dt>Path fraction</dt><dd>A number between 0 and 1 returned by compute_cartesian_path. A fraction of 1.0 means the entire straight-line path is collision-free and ready to execute. Below ~0.95 means part of the path is blocked.</dd>
-        <dt>Planning frame</dt><dd>The coordinate frame MoveIt 2 uses when planning. Poses must be expressed in this frame. Usually the robot's base frame (<code>panda_link0</code>).</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 5</h3>
+      <dl>
+        <dt>Pose</dt><dd>A position (x, y, z in meters) combined with an orientation (rotation); fully describes where a frame is in space. Position alone is not enough — a screwdriver at the right position but the wrong angle is useless.</dd>
+        <dt>SE(3)</dt><dd>The Special Euclidean group — the mathematical set of all 3D poses (position + orientation).</dd>
+        <dt>Quaternion</dt><dd>A 4-number representation of orientation (x, y, z, w) that avoids gimbal lock; used internally by MoveIt&nbsp;2.</dd>
+        <dt>Gimbal lock</dt><dd>A problem with 3-angle rotation representations where two axes align and one degree of freedom is lost. Quaternions avoid this entirely.</dd>
+        <dt>Roll-Pitch-Yaw (RPY)</dt><dd>Three Euler angles describing successive rotations; intuitive but order-dependent and susceptible to gimbal lock.</dd>
+        <dt>Cartesian path</dt><dd>A path where the gripper travels in a straight line through 3D space, as opposed to a joint-space plan where the gripper traces whatever arc the joints naturally produce.</dd>
+        <dt>Path fraction</dt><dd>The portion (0–1) of a requested Cartesian path that was successfully planned; values below 1 indicate unreachable segments.</dd>
+        <dt>Planning frame</dt><dd>The coordinate frame MoveIt 2 uses when planning; poses must be expressed in this frame (usually <code>panda_link0</code>).</dd>
+        <dt>Pose goal</dt><dd>A Cartesian target pose for the EEF; MoveIt&nbsp;2 solves IK to find the required joint angles.</dd>
+        <dt>compute_cartesian_path</dt><dd>MoveIt&nbsp;2 API that interpolates the EEF in straight lines between waypoints and returns a trajectory and a path fraction.</dd>
+        <dt>panda_link0</dt><dd>The robot base frame; use as the reference for all Cartesian pose coordinates in Python code.</dd>
+        <dt>panda_hand</dt><dd>The EEF flange link; use as pose_link when specifying which link should reach the target pose.</dd>
+        <dt>panda_EE</dt><dd>A virtual tool-center-point frame 107&nbsp;mm beyond the flange; useful when a tool extends the physical reach.</dd>
+        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver in MoveIt&nbsp;2; returns the IK solution closest to the current joint state.</dd>
+        <dt>SO(3)</dt><dd>Special Orthogonal group in 3D — the mathematical set of all valid 3D rotation matrices. Writing R ∈ SO(3) means R is a legal rotation (columns are unit-length and perpendicular; no mirror flip). MoveIt&nbsp;2 enforces this automatically.</dd>
+        <dt>SE(3)</dt><dd>Special Euclidean group in 3D — the set of all valid poses (position + orientation) of a rigid body in 3D space. Every SE(3) element can be encoded as the 4×4 homogeneous transform T = [R p; 0 1].</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §5.1  Pose Representation
@@ -91,12 +101,15 @@
       <h2>5.1 Pose Representation in SE(3)</h2>
 
       <p>
-        A <strong>pose</strong> is the combination of a position and an orientation. In robotics,
-        the set of all valid poses of a rigid body in 3D space is written \(SE(3)\) — the
+        A <strong>pose</strong> is the combination of a position and an orientation. Think of a
+        screwdriver lying on a table: knowing where it is (position) is not enough — you also need
+        to know which way it is pointing (orientation) before you can pick it up correctly. In
+        robotics, the set of all valid poses of a rigid body in 3D space is written \(SE(3)\) — the
         <em>Special Euclidean group</em> of dimension three
         <a class="cite" href="#ref1">[1]</a>.
         Every element of \(SE(3)\) can be encoded as a \(4 \times 4\)
-        <strong>homogeneous transform matrix</strong>:
+        <strong>homogeneous transform matrix</strong>, the same representation introduced in
+        Chapter&nbsp;2's forward kinematics:
       </p>
 
       <div class="math-block">
@@ -105,6 +118,7 @@
           \quad R \in SO(3),\quad \mathbf{p} \in \mathbb{R}^3
         \]
       </div>
+      <p class="eq-note"><strong>SO(3)</strong> — "Special Orthogonal group in 3D" — is just the mathematician's name for <em>the set of all valid 3D rotation matrices</em>. Writing R ∈ SO(3) means "R is a legal rotation": its columns are unit-length, perpendicular to each other, and it doesn't flip the coordinate system. You never construct SO(3) by hand; MoveIt&nbsp;2 handles it. Concretely: R (top-left 3×3) encodes which way the gripper is pointing; p (top-right column) encodes where it is in space.</p>
 
       <p>
         The \(3 \times 3\) block \(R\) encodes the orientation (rotation relative to some reference
@@ -233,7 +247,8 @@
       <p>
         The rotation matrix \(R\) encodes orientation but is awkward to specify by hand —
         you would need to fill in 9 numbers while satisfying 6 orthogonality constraints.
-        In practice, three more compact representations are used:
+        Nobody actually does that. In practice, three more compact representations are used,
+        each with its own trade-offs:
       </p>
 
       <table>
@@ -251,7 +266,7 @@
             <td><strong>Quaternion</strong></td>
             <td>4 numbers: \((q_x, q_y, q_z, q_w)\), unit constraint \(|\mathbf{q}|=1\)</td>
             <td>No gimbal lock; smooth interpolation (SLERP); used internally by MoveIt&nbsp;2</td>
-            <td>Non-intuitive; double cover of \(SO(3)\) (\(\mathbf{q}\) and \(-\mathbf{q}\) same rotation)</td>
+            <td>Non-intuitive; <em>double cover</em> of SO(3) means two quaternions (\(\mathbf{q}\) and \(-\mathbf{q}\)) represent the exact same physical rotation — easy to handle, just be consistent</td>
           </tr>
           <tr>
             <td><strong>Axis-Angle</strong></td>
@@ -283,7 +298,7 @@
 
       <div class="callout callout-tip">
         <strong>Converting RPY to quaternion in Python:</strong>
-        Use <code>transforms3d</code> or <code>scipy</code>:
+        Use <code>scipy</code> (install once with <code>pip3 install scipy</code> if not already available):
         <br><br>
         <code>from scipy.spatial.transform import Rotation as R</code><br>
         <code>q = R.from_euler('xyz', [roll, pitch, yaw]).as_quat()  # returns [x, y, z, w]</code>
@@ -533,10 +548,11 @@
       <h2>5.5 Reference Frames</h2>
 
       <p>
-        Every pose goal must be expressed <em>relative to a specific frame</em>. Specifying
-        a pose in the wrong frame is one of the most common bugs in Cartesian control — the
-        numbers look right but the robot moves to the wrong place. Figure&nbsp;5.3 shows the
-        three frames you will use most often.
+        Every pose goal must be expressed <em>relative to a specific frame</em>. Recall from
+        Chapter&nbsp;2 that every measurement is only meaningful relative to a frame — that rule
+        applies here too. Specifying a pose in the wrong frame is one of the most common bugs in
+        Cartesian control: the numbers look right but the robot moves to the wrong place.
+        Figure&nbsp;5.3 shows the three frames you will use most often.
       </p>
 
       <!-- ── Figure 5.3: Frame Chain ── -->
@@ -869,12 +885,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 5 Summary — What you learned:</strong>
+      <strong>Chapter 5 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>SE(3)</strong> is just the mathematical name for "a position in 3D + an orientation." Every robot pose — where the gripper is and which way it's pointing — lives in SE(3).</li>
-        <li><strong>Quaternions</strong> represent orientation as 4 numbers instead of 3 Euler angles; they avoid "gimbal lock" (a situation where two rotation axes align and you lose one degree of freedom) and blend smoothly for interpolation.</li>
-        <li>For a <strong>straight-line path</strong> (like descending vertically onto a part), use <code>compute_cartesian_path()</code> — it guarantees the gripper travels in a straight line in 3D, which a joint-space plan does not.</li>
-        <li>Always check the <strong>fraction</strong> returned: if it is below ~0.95, part of the straight line is blocked and you should adjust the scene or approach direction before executing.</li>
+        <li>For real tasks, <strong>Cartesian control is more natural than joint-space control</strong>: instead of specifying 7 joint angles, you say "move the gripper to position (x, y, z) pointing in direction Q." MoveIt&nbsp;2's IK solver finds the joint angles automatically. This is how you program tasks the way you think about them — not the way the robot thinks about them.</li>
+        <li>Orientation is specified as a <strong>quaternion</strong> (4 numbers: x, y, z, w) rather than Euler angles. Quaternions avoid <em>gimbal lock</em> — a failure mode where two rotation axes align and one direction of rotation becomes impossible to command — and interpolate smoothly between poses without sudden flips.</li>
+        <li>When the gripper must travel in a <strong>perfectly straight line</strong> through 3D space — descending vertically onto a part, wiping a surface — use <code>compute_cartesian_path()</code>. A normal joint-space plan makes the gripper follow an unpredictable arc. This distinction matters every time the path shape is part of the task.</li>
+        <li>The <strong>path fraction</strong> returned by <code>compute_cartesian_path()</code> tells you what portion of the straight line was successfully planned. Below ~0.95 means part of the path is blocked; adjust the scene or approach direction before executing — never ignore a low fraction.</li>
       </ul>
     </div>
 
@@ -904,24 +920,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h3>Key Terms — Chapter 5</h3>
-      <dl>
-        <dt>SE(3)</dt><dd>The Special Euclidean group — the mathematical set of all 3D poses (position + orientation).</dd>
-        <dt>Pose</dt><dd>A position (x, y, z in meters) combined with an orientation (rotation); fully describes where a frame is in space.</dd>
-        <dt>Quaternion</dt><dd>A 4-number representation of orientation (x, y, z, w) with no gimbal lock; used internally by MoveIt&nbsp;2.</dd>
-        <dt>Roll-Pitch-Yaw (RPY)</dt><dd>Three Euler angles describing successive rotations; intuitive but order-dependent and susceptible to gimbal lock.</dd>
-        <dt>Pose goal</dt><dd>A Cartesian target pose for the EEF; MoveIt&nbsp;2 solves IK to find the required joint angles.</dd>
-        <dt>compute_cartesian_path</dt><dd>MoveIt&nbsp;2 API that interpolates the EEF in straight lines between waypoints and returns a trajectory fraction.</dd>
-        <dt>Path fraction</dt><dd>The portion (0–1) of a requested Cartesian path that was successfully planned; values below 1 indicate unreachable segments.</dd>
-        <dt>panda_link0</dt><dd>The robot base frame; use as the reference for all Cartesian pose coordinates in Python code.</dd>
-        <dt>panda_hand</dt><dd>The EEF flange link; use as pose_link when specifying which link should reach the target pose.</dd>
-        <dt>panda_EE</dt><dd>A virtual tool-center-point frame 107&nbsp;mm beyond the flange; useful when a tool extends the physical reach.</dd>
-        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver in MoveIt&nbsp;2; returns the IK solution closest to the current joint state.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

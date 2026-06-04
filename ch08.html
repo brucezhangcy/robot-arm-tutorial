@@ -71,19 +71,25 @@
       In Chapters 4 and 5, you used MoveIt 2 like a black box: tell it where to go, get a motion back. This chapter opens the box and shows you what's happening inside. Understanding the internals is what turns "it sometimes fails and I don't know why" into "I can diagnose exactly what went wrong and fix it." You will also learn to add obstacles to the scene, apply motion constraints, and choose the right planner for each task.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Planning scene</dt><dd>MoveIt 2's model of the world: the robot itself plus all known obstacles (tables, walls, objects). If the planning scene doesn't match reality, the arm will plan paths that collide with real objects.</dd>
-        <dt>Collision object</dt><dd>A shape (box, cylinder, sphere, or mesh) added to the planning scene to represent an obstacle the arm must avoid. You add these in Python before planning.</dd>
-        <dt>OMPL</dt><dd>"Open Motion Planning Library" — the default collection of path-finding algorithms used by MoveIt 2. Think of it as the routing engine inside the GPS.</dd>
-        <dt>RRT / RRTConnect</dt><dd>"Rapidly-exploring Random Tree" — the most common planning algorithm. It grows a tree of random arm configurations from both start and goal until they connect, then shortens the path.</dd>
-        <dt>Constraint</dt><dd>A rule that every point in the planned motion must satisfy. Example: "keep the gripper pointing straight down throughout the whole move" (so a glass of water doesn't spill).</dd>
-        <dt>Collision checker</dt><dd>The part of MoveIt 2 that checks, for every candidate path point, whether the arm would collide with anything in the planning scene. Uses a library called FCL.</dd>
-        <dt>OctoMap</dt><dd>A 3D grid map built from sensor data (depth camera or lidar) that automatically adds real-world obstacles to the planning scene — useful when objects move unpredictably.</dd>
-        <dt>Trajectory post-processing</dt><dd>Steps applied to the raw planned path before execution: removing redundant waypoints, adding velocity/acceleration limits (time parameterization), and smoothing sharp corners.</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 8</h3>
+      <dl>
+        <dt>Planning scene</dt><dd>MoveIt&nbsp;2's model of the world: robot model, joint state, collision objects, attached objects, and the allowed collision matrix. If it doesn't match reality, the arm will plan paths that collide with real objects.</dd>
+        <dt>Collision object</dt><dd>A geometric primitive (box, cylinder, sphere, or mesh) added to the planning scene so the planner avoids it.</dd>
+        <dt>Constraint</dt><dd>A rule that every point in the planned motion must satisfy; for example, keeping the gripper pointing straight down throughout the whole move.</dd>
+        <dt>Collision checker</dt><dd>The part of MoveIt&nbsp;2 (using the FCL library) that checks every candidate path point for collisions with the planning scene.</dd>
+        <dt>OMPL</dt><dd>Open Motion Planning Library — a collection of sampling-based planners (RRT, PRM, LBKPIECE) used as the default plugin in MoveIt&nbsp;2.</dd>
+        <dt>RRTConnect</dt><dd>A bidirectional RRT variant that grows two trees (from start and goal) and attempts to connect them; the default planner in MoveIt&nbsp;2.</dd>
+        <dt>Time-Optimal Trajectory Generation (TOTG)</dt><dd>A post-processing step that assigns timestamps to a collision-free path to maximise execution speed within joint velocity and acceleration limits.</dd>
+        <dt>Trajectory post-processing</dt><dd>Steps applied to the raw planned path before execution: removing redundant waypoints, adding velocity/acceleration limits, and smoothing sharp corners.</dd>
+        <dt>OctoMap</dt><dd>A 3D grid map built from sensor data (depth camera or lidar) that automatically adds real-world obstacles to the planning scene.</dd>
+        <dt>move_group</dt><dd>The central MoveIt&nbsp;2 ROS&nbsp;2 node that receives planning requests, manages the planning scene, and coordinates planner plugins.</dd>
+        <dt>OrientationConstraint</dt><dd>A MoveIt&nbsp;2 constraint that requires the end-effector orientation to remain within a specified angular tolerance of a reference orientation.</dd>
+        <dt>Pilz planner</dt><dd>A deterministic MoveIt&nbsp;2 planner that generates repeatable PTP, LIN, and CIRC motions without random sampling.</dd>
+        <dt>Allowed collision matrix (ACM)</dt><dd>A table that specifies which pairs of robot links may touch without being treated as a collision (e.g., adjacent links).</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §8.1  Architecture
@@ -94,8 +100,10 @@
       <p>
         MoveIt&nbsp;2 is built around a central ROS&nbsp;2 node called
         <code>move_group</code>. All planning requests — whether from Python, C++, or
-        RViz — pass through this node. Figure&nbsp;8.1 shows the major components and
-        their relationships.
+        RViz — pass through this node. You have been sending goals to this node since
+        Chapter&nbsp;4 without thinking about it; this section shows you what happens inside
+        once your goal arrives. Figure&nbsp;8.1 shows the major components and their
+        relationships.
       </p>
 
       <!-- ── Figure 8.1: MoveIt 2 architecture ── -->
@@ -193,11 +201,15 @@
       <h2>8.2 The Planning Scene</h2>
 
       <p>
-        The <strong>planning scene</strong> is MoveIt&nbsp;2's representation of the world.
-        It contains the robot's current joint state, all collision objects (boxes,
-        cylinders, meshes), attached objects (gripper payload), and the allowed collision
-        matrix (ACM). The planner queries the scene to check whether candidate configurations
-        are collision-free.
+        The <strong>planning scene</strong> is MoveIt&nbsp;2's representation of the world —
+        its model of everything that exists around and including the robot. It contains the
+        robot's current joint state, all collision objects (boxes, cylinders, meshes), attached
+        objects (gripper payload), and the allowed collision matrix (ACM). The planner queries
+        the scene to check whether candidate configurations are collision-free. If the planning
+        scene does not match reality — for example, because you added a real box but forgot to
+        add it to the scene — the arm will cheerfully plan paths straight through it. Getting
+        the planning scene right is one of the most important practical skills in real-world
+        deployment (Chapter&nbsp;9 discusses this further).
       </p>
 
       <!-- ── Figure 8.2: planning scene ── -->
@@ -709,12 +721,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 8 Summary — What you learned:</strong>
+      <strong>Chapter 8 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li>Everything in MoveIt 2 passes through the central <strong><code>move_group</code> node</strong> — your Python code, RViz's interactive markers, and any other client all send requests to the same node.</li>
-        <li>The <strong>planning scene</strong> is MoveIt 2's model of the world (robot + all obstacles). If the scene is wrong, the planner will either collide in real life or refuse to plan to perfectly reachable goals.</li>
-        <li>Different <strong>motion planners</strong> suit different situations: RRTConnect is fast for open spaces; LBKPIECE handles narrow passages better; Pilz CIRC/LIN gives geometric straight-line and arc paths for industrial applications.</li>
-        <li><strong>Constraints</strong> let you add rules to any plan — keep the end-effector upright while transporting a glass of water, stay within a bounding box, or hold a specific orientation throughout the motion.</li>
+        <li>MoveIt&nbsp;2 plans collision-free paths, but it can only avoid what it knows about. The <strong>planning scene</strong> is MoveIt&nbsp;2's model of the world — every table, wall, bin, and restricted zone must be added as a collision object. An inaccurate scene leads to real-world collisions or refusals to plan to perfectly reachable goals. The quality of your planning scene directly determines the safety and usefulness of every plan.</li>
+        <li>All planning requests flow through the central <strong><code>move_group</code> node</strong>. Your Python code, RViz's interactive markers, and any other client all talk to the same node. This is the "brain" of the MoveIt&nbsp;2 system and the right place to look first when plans fail.</li>
+        <li>No single planner is best for everything. <strong>RRTConnect</strong> is fast for open workspaces; <strong>LBKPIECE</strong> handles narrow passages better; <strong>Pilz LIN/CIRC</strong> produces exact geometric straight-line and arc paths for industrial applications where the path shape matters, not just the start and end poses.</li>
+        <li><strong>Constraints</strong> let you add rules every plan must satisfy — keep the end-effector upright while transporting liquid, stay within a workspace bounding box, hold a specific joint angle throughout. Constraints narrow the search space and can slow planning, but they are the only way to guarantee useful behavior on every plan.</li>
       </ul>
     </div>
 
@@ -744,40 +756,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h2>Key Terms</h2>
-      <dl>
-        <dt>move_group</dt>
-        <dd>The central MoveIt&nbsp;2 ROS&nbsp;2 node that receives planning requests,
-            manages the planning scene, and coordinates planner plugins.</dd>
-        <dt>Planning scene</dt>
-        <dd>MoveIt&nbsp;2's representation of the world: robot model, joint state, collision
-            objects, attached objects, and the allowed collision matrix.</dd>
-        <dt>Collision object</dt>
-        <dd>A geometric primitive (box, cylinder, mesh) added to the planning scene so the
-            planner avoids it.</dd>
-        <dt>OMPL</dt>
-        <dd>Open Motion Planning Library — a collection of sampling-based planners (RRT,
-            PRM, LBKPIECE) used as the default plugin in MoveIt&nbsp;2.</dd>
-        <dt>RRTConnect</dt>
-        <dd>A bidirectional RRT variant that grows two trees (from start and goal) and
-            attempts to connect them; the default planner in MoveIt&nbsp;2.</dd>
-        <dt>Time-Optimal Trajectory Generation (TOTG)</dt>
-        <dd>A post-processing step that assigns time stamps to a collision-free path to
-            maximise execution speed within joint velocity and acceleration limits.</dd>
-        <dt>OrientationConstraint</dt>
-        <dd>A MoveIt&nbsp;2 constraint that requires the end-effector orientation to remain
-            within a specified angular tolerance of a reference orientation.</dd>
-        <dt>Pilz planner</dt>
-        <dd>A deterministic MoveIt&nbsp;2 planner that generates repeatable PTP, LIN, and
-            CIRC motions without random sampling.</dd>
-        <dt>Allowed collision matrix (ACM)</dt>
-        <dd>A table that specifies which pairs of robot links may touch without being
-            treated as a collision (e.g., adjacent links).</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

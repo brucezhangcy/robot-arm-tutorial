@@ -71,18 +71,25 @@
       Chapters 4 and 5 worked like a GPS: you give a destination, the system plans a route, and the arm follows it. Velocity control is different — it's like driving manually. Instead of planning a full path, your code sends a speed command to each joint 1,000 times per second, adjusting in real time based on what's happening around the arm. This makes the arm reactive: it can change direction in milliseconds if a camera spots an obstacle or a person reaches into its workspace.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Velocity</dt><dd>How fast something is moving and in which direction. Speed is just the magnitude (how fast); velocity also includes direction. Measured in m/s (meters per second) for linear motion, or rad/s (radians per second) for rotational motion.</dd>
-        <dt>Velocity profile</dt><dd>A plan for how speed changes over time during a motion. You rarely want to instantly jump to full speed — that causes mechanical shock. A profile ramps up smoothly, cruises, then ramps back down.</dd>
-        <dt>Trapezoidal profile</dt><dd>The most common velocity profile shape: linear ramp up, constant-speed cruise, linear ramp down. The speed vs. time graph looks like a trapezoid (flat top, sloped sides).</dd>
-        <dt>S-curve profile</dt><dd>A smoother alternative to the trapezoidal profile where the ramp itself is gradual (S-shaped) rather than instant. Reduces vibration and mechanical wear.</dd>
-        <dt>Jacobian pseudoinverse</dt><dd>A mathematical operation that "inverts" the Jacobian to go backwards: given the gripper speed you want, compute the joint speeds that produce it. Written J⁺ (J-plus).</dd>
-        <dt>Damped least squares (DLS)</dt><dd>A safer version of the pseudoinverse that prevents joint speeds from exploding to infinity when the arm is near a singularity. Always use this instead of the plain pseudoinverse.</dd>
-        <dt>Streaming commands</dt><dd>Sending new velocity values to the controller at a fixed rate (e.g., 50 Hz) rather than sending a full trajectory at once. Your code runs a loop that publishes velocities continuously.</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 6</h3>
+      <dl>
+        <dt>Velocity</dt><dd>How fast something is moving and in which direction; measured in m/s for linear motion or rad/s for rotational motion.</dd>
+        <dt>Velocity control</dt><dd>A control mode in which the commanded output is a joint velocity rather than a position or torque.</dd>
+        <dt>Velocity profile</dt><dd>A plan for how speed changes over time during a motion, ramping up smoothly, cruising, then ramping back down.</dd>
+        <dt>Trapezoidal profile</dt><dd>A velocity profile that ramps linearly to a cruise speed, holds, then ramps back to zero; keeps acceleration bounded.</dd>
+        <dt>S-curve profile</dt><dd>A velocity profile that additionally limits jerk by smoothing the ramp phases; useful for delicate or vibration-sensitive tasks.</dd>
+        <dt>Jacobian pseudoinverse (J&#x207A;)</dt><dd>The Moore-Penrose pseudoinverse of the Jacobian; maps desired EEF velocities to minimum-norm joint velocities.</dd>
+        <dt>Damped least squares (DLS)</dt><dd>A regularised pseudoinverse \(J^+ = J^\top(JJ^\top + \lambda^2 I)^{-1}\) that limits joint velocity magnitudes near kinematic singularities.</dd>
+        <dt>Singularity</dt><dd>A configuration in which the Jacobian loses rank; the arm cannot move in one or more Cartesian directions and the pseudoinverse becomes ill-conditioned.</dd>
+        <dt>Streaming commands</dt><dd>Sending new velocity values to the controller at a fixed rate (e.g., 50 Hz) rather than sending a full trajectory at once.</dd>
+        <dt>JointGroupVelocityController</dt><dd>The ros2_control plugin that reads a <code>Float64MultiArray</code> of joint velocities and forwards them to the hardware interface.</dd>
+        <dt>Watchdog timer</dt><dd>A safety mechanism that zeroes all joint velocities if no new command arrives within a fixed timeout window.</dd>
+        <dt>Franka Control Interface (FCI)</dt><dd>The low-latency 1&nbsp;Gbps Ethernet interface that allows external computers to stream commands to the Panda at 1&nbsp;kHz.</dd>
+        <dt>Redundancy</dt><dd>Having more joints than the task requires; the Panda's 7 joints provide one redundant DOF over the 6-DOF Cartesian task space.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §6.1  Why Velocity Control?
@@ -95,12 +102,14 @@
       </div>
 
       <p>
-        Position control hands a trajectory to the <code>JointTrajectoryController</code> and
-        waits for it to finish. Once the goal is dispatched, you have no low-level influence over
-        the motion. Velocity control keeps the decision loop in your code: at every control tick
-        your node publishes the velocity it wants and immediately reads back the joint state.
-        If the environment changes — a camera detects an obstacle, a force sensor fires — you
-        can react in the next tick.
+        Position control (Chapters&nbsp;4–5) hands a trajectory to the
+        <code>JointTrajectoryController</code> and waits for it to finish. Once the goal is
+        dispatched, you have no low-level influence over the motion. Velocity control keeps the
+        decision loop in your code: at every control tick your node publishes the velocity it
+        wants and immediately reads back the joint state. If the environment changes — a camera
+        detects an obstacle, a force sensor fires — you can react in the next tick. That
+        millisecond-level responsiveness is what separates reactive manipulation from scripted
+        playback.
       </p>
 
       <table>
@@ -143,10 +152,12 @@
 
       <p>
         The Panda supports velocity control through its
-        <strong>Franka Control Interface (FCI)</strong>: the real-time kernel thread reads your
-        velocity commands every millisecond. In simulation the same interface is emulated by
-        Gazebo and ros2_control at 1&nbsp;kHz. Commands that arrive late or stop arriving cause
-        the controller to zero all velocities — a deliberate safety reflex.
+        <strong>Franka Control Interface (FCI)</strong> — the real-time Ethernet link you read
+        about in Chapter&nbsp;1: the real-time kernel thread reads your velocity commands every
+        millisecond. In simulation, the same interface is emulated by Gazebo and ros2_control at
+        1&nbsp;kHz. Commands that arrive late or stop arriving cause the controller to zero all
+        velocities — a deliberate safety reflex that you will also see when we discuss protective
+        stops in Chapter&nbsp;9.
       </p>
     </section>
 
@@ -239,6 +250,7 @@
       <div class="math-block">
         \[ v_{\mathrm{cmd}} = K_p \, e + K_d \, \dot{e} \]
       </div>
+      <p class="eq-note">Kp acts like a stiff spring — the bigger the position error, the harder it pushes back. Kd acts like a shock absorber — it slows the correction down as you approach the target, preventing overshoot.</p>
 
       <p>
         The Panda's own servo loop handles the innermost current and torque regulation, so in
@@ -278,6 +290,7 @@
           t_{\mathrm{cruise}} = \frac{\Delta\theta - v_{\max}\,t_{\mathrm{acc}}}{v_{\max}}
         \]
       </div>
+      <p class="eq-note">The ramp-up time is simply top-speed ÷ acceleration. A faster acceleration means a shorter ramp. The cruise phase fills whatever distance is left in the middle.</p>
 
       <!-- ── Figure 6.2: trapezoidal velocity profile ── -->
       <figure id="fig6-2">
@@ -376,8 +389,8 @@
       <h2>6.4 Jacobian-Based Cartesian Velocity Control</h2>
 
       <p>
-        Section&nbsp;2.5 showed that the Jacobian \(J(q)\) maps joint velocities to
-        end-effector velocities:
+        Section&nbsp;2.5 introduced the Jacobian as the "gear ratio" between joint speeds and
+        end-effector speed. Now you will use it in practice. The relationship is:
       </p>
 
       <div class="math-block">
@@ -404,9 +417,11 @@
       <h3>6.4.1 Singularities and Damped Least Squares</h3>
 
       <p>
-        Near a kinematic singularity, one or more rows of \(J\) approach linear dependence.
-        The pseudoinverse amplifies small numerical errors into arbitrarily large joint velocities.
-        The standard fix is the <strong>damped least-squares</strong> (DLS) pseudoinverse:
+        Near a kinematic singularity — the configurations Chapter&nbsp;2 warned you about —
+        one or more rows of \(J\) approach linear dependence. The pseudoinverse amplifies small
+        numerical errors into arbitrarily large joint velocities; in the extreme case the arm
+        would try to spin infinitely fast. The standard fix is the
+        <strong>damped least-squares</strong> (DLS) pseudoinverse:
       </p>
 
       <div class="math-block">
@@ -414,6 +429,7 @@
           J^+_{\mathrm{DLS}} = J^{\top}\bigl(J J^{\top} + \lambda^2 I\bigr)^{-1}
         \]
       </div>
+      <p class="eq-note">The λ² term is a safety cushion added to the denominator. Without it, the math can blow up near singularities. Larger λ = safer but slightly less accurate near the target.</p>
 
       <p>
         A damping constant \(\lambda \approx 0.05\) limits joint velocities near singularities
@@ -523,10 +539,11 @@
       <h3>6.5.1 Controller Configuration</h3>
 
       <p>
-        Add the following YAML block to your controller configuration. The velocity controller
+        Add the following YAML block to your controller configuration file (typically <code>~/panda_ws/src/franka_ros2/franka_moveit_config/config/ros2_controllers.yaml</code>). The velocity controller
         runs alongside (not instead of) the joint state broadcaster:
       </p>
 
+      <div class="code-header">ros2_controllers.yaml — add this block to the controller config file</div>
       <pre><code class="language-yaml">controller_manager:
   ros__parameters:
     update_rate: 1000  # Hz
@@ -550,6 +567,9 @@ velocity_controller:
 
       <h3>6.5.2 Loading and Activating the Controller</h3>
 
+      <p>Run the following commands in a new terminal (or Docker exec shell) while the simulation is running. You must source your workspace first.</p>
+
+      <div class="code-header">bash — new terminal with simulation running</div>
       <pre><code class="language-bash"># Spawn the controller in the INACTIVE state
 ros2 run controller_manager spawner velocity_controller --inactive
 
@@ -587,6 +607,8 @@ vel_pub.publish(msg)</code></pre>
          ════════════════════════════════════════════════ -->
     <section id="code">
       <h2>6.6 Code Examples</h2>
+
+      <p>Before running either example: start the simulation (§3.5), then switch to the velocity controller using the commands in §6.5.2. Your Python script runs in a third terminal.</p>
 
       <h3>6.6.1 Trapezoidal Joint Velocity Ramp</h3>
 
@@ -782,12 +804,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 6 Summary — What you learned:</strong>
+      <strong>Chapter 6 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>Velocity control</strong> keeps the motion decision in your code every tick — instead of dispatching a plan and waiting, you continuously publish the speed you want and can react to changes instantly.</li>
-        <li>A <strong>trapezoidal velocity profile</strong> protects the hardware by ramping up smoothly, cruising at max speed, then ramping down — it avoids the mechanical shock of instantly commanding max speed from rest.</li>
-        <li>The <strong>Jacobian pseudoinverse</strong> converts a desired end-effector velocity (in 3D Cartesian space) into the joint velocities that produce it — this is how you drive the gripper straight instead of each joint independently.</li>
-        <li><strong>Damped least-squares (DLS)</strong> prevents joint velocity commands from exploding near singularities by trading a small amount of accuracy for bounded joint speeds — always use it in Jacobian-based control.</li>
+        <li><strong>Velocity control fundamentally changes the relationship between your code and the arm.</strong> In position control (Chapters 4–5), you dispatch a goal and wait. In velocity control, your code runs in a continuous loop — publishing speed commands every tick — and can react instantly to sensor data or changing conditions. This is the basis of all reactive robot behavior.</li>
+        <li>A <strong>trapezoidal velocity profile</strong> protects the hardware: ramp up gradually to max speed, cruise, then ramp back down before stopping. Commanding max speed from a standstill creates mechanical shock that damages joints over time and violates velocity interface limits.</li>
+        <li>The <strong>Jacobian pseudoinverse (J⁺)</strong> converts a desired gripper velocity in 3D Cartesian space into the 7 joint velocities that produce it. This is how you command "move the gripper 5 cm/s to the right" without computing joint speeds by hand — J⁺ is the key mathematical tool that unlocks real-time Cartesian velocity control.</li>
+        <li><strong>Damped least-squares (DLS)</strong> modifies J⁺ near singularities — configurations where the standard pseudoinverse would produce unbounded joint speeds. The λ² damping term keeps joint speeds bounded at the cost of a small accuracy loss. Always use DLS in Jacobian-based control; the standard pseudoinverse is unsafe on real hardware.</li>
       </ul>
     </div>
 
@@ -824,44 +846,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h2>Key Terms</h2>
-      <dl>
-        <dt>Velocity control</dt>
-        <dd>A control mode in which the commanded output is a joint velocity rather than a
-            position or torque.</dd>
-        <dt>JointGroupVelocityController</dt>
-        <dd>The ros2_control plugin that reads a <code>Float64MultiArray</code> of joint
-            velocities and forwards them to the hardware interface.</dd>
-        <dt>Trapezoidal profile</dt>
-        <dd>A velocity trajectory that ramps linearly to a cruise speed, holds, then ramps
-            back to zero; keeps acceleration bounded.</dd>
-        <dt>S-curve profile</dt>
-        <dd>A velocity profile that additionally limits jerk by smoothing the ramp phases;
-            useful for delicate or vibration-sensitive tasks.</dd>
-        <dt>Jacobian pseudoinverse (J&#x207A;)</dt>
-        <dd>The Moore-Penrose pseudoinverse of the Jacobian; maps desired EEF velocities to
-            minimum-norm joint velocities.</dd>
-        <dt>Damped least squares (DLS)</dt>
-        <dd>A regularised pseudoinverse
-            \(J^+ = J^\top(JJ^\top + \lambda^2 I)^{-1}\) that limits joint velocity magnitudes
-            near kinematic singularities.</dd>
-        <dt>Singularity</dt>
-        <dd>A configuration in which the Jacobian loses rank; the arm cannot move in one or
-            more Cartesian directions and the pseudoinverse becomes ill-conditioned.</dd>
-        <dt>Watchdog timer</dt>
-        <dd>A safety mechanism that zeroes all joint velocities if no new command arrives
-            within a fixed timeout window.</dd>
-        <dt>Franka Control Interface (FCI)</dt>
-        <dd>The low-latency 1&nbsp;Gbps Ethernet interface that allows external computers to
-            stream commands to the Panda at 1&nbsp;kHz.</dd>
-        <dt>Redundancy</dt>
-        <dd>Having more joints than the task requires; the Panda's 7 joints provide one
-            redundant DOF over the 6-DOF Cartesian task space.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

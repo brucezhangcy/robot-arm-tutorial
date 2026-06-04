@@ -71,19 +71,24 @@
       Every chapter to this point was done entirely in simulation — safe and consequence-free. This chapter is where you connect to a real robot arm for the first time. The same Python code you wrote in Chapters 4–8 will run on the real hardware, but a few important things change: the robot is physically connected over Ethernet, the timing requirements are stricter, and a mistake can damage equipment or injure someone nearby. This chapter is your safety and setup guide for that transition.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>E-stop (Emergency Stop)</dt><dd>A large red button that immediately cuts power to all robot motors. Always keep one within arm's reach during hardware testing. When in doubt, press it.</dd>
-        <dt>FCI — Franka Control Interface</dt><dd>The low-level communication protocol between the control PC and the Panda arm. It runs over Ethernet at 1,000 messages per second and requires a dedicated network card.</dd>
-        <dt>Latency</dt><dd>The time delay between sending a command and the robot executing it. In simulation this is near zero; over Ethernet it's about 0.3–0.6 milliseconds. The robot's safety system monitors for late commands.</dd>
-        <dt>Real-time kernel</dt><dd>A modified version of Linux (called PREEMPT_RT) that guarantees your control loop runs every millisecond on time, even if other programs are running. Without it, Windows Update or a browser can delay your loop and trigger a protective stop.</dd>
-        <dt>PREEMPT_RT</dt><dd>The name of the Linux kernel patch that adds real-time scheduling. Verify it's installed with <code>uname -r</code> — the output must contain <code>-rt</code>.</dd>
-        <dt>Protective stop</dt><dd>An automatic safety halt triggered when the robot detects something unexpected: a missed timing deadline, an excessive force, or a joint limit violation. The arm freezes and must be manually reset via the Franka Desk web interface.</dd>
-        <dt>Dedicated NIC</dt><dd>"Network Interface Card" — a dedicated Ethernet port connected only to the Panda, not to the internet or other devices. Sharing it with other traffic causes timing jitter that triggers protective stops.</dd>
-        <dt>Gravity compensation</dt><dd>Torques the robot applies to counteract gravity and keep itself from drooping under its own weight. In simulation this is perfect; on real hardware there are small modeling errors that cause slight drift.</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 9</h3>
+      <dl>
+        <dt>Emergency stop (E-stop)</dt><dd>A hard stop that immediately cuts motor power; requires manual release and software recovery before motion can resume. Always keep one within reach during hardware testing.</dd>
+        <dt>Franka Control Interface (FCI)</dt><dd>The UDP-based protocol over Gigabit Ethernet that allows external computers to stream 1&nbsp;kHz control commands to the Panda, requiring a dedicated network card.</dd>
+        <dt>Latency</dt><dd>The time delay between sending a command and the robot executing it; over Ethernet typically 0.3–0.6 ms. The robot's safety system monitors for late commands.</dd>
+        <dt>Real-time kernel</dt><dd>A modified version of Linux (PREEMPT_RT) that guarantees the control loop runs every millisecond on time, even if other programs are running.</dd>
+        <dt>PREEMPT_RT</dt><dd>The Linux kernel patch that makes the kernel fully preemptible, reducing scheduling jitter to enable hard real-time operation at 1&nbsp;kHz.</dd>
+        <dt>Protective stop</dt><dd>A reversible safety halt triggered by a reflex (contact force, velocity limit, or watchdog timeout); recoverable via error-recovery service call.</dd>
+        <dt>Dedicated NIC</dt><dd>A dedicated Ethernet port connected only to the Panda; sharing it with other traffic causes timing jitter that triggers protective stops.</dd>
+        <dt>Gravity compensation</dt><dd>Torques the robot applies to counteract gravity and prevent drooping; small modeling errors on real hardware can cause slight drift.</dd>
+        <dt>Watchdog timer</dt><dd>The FCI safety mechanism that triggers a protective stop if no control packet arrives within a fixed timeout (default 1&nbsp;ms).</dd>
+        <dt>EtherCAT</dt><dd>The real-time industrial Ethernet bus used internally between the Panda base unit and the seven joint motor drives.</dd>
+        <dt>cyclictest</dt><dd>A standard Linux real-time benchmark tool that measures scheduling latency by waking a high-priority thread at precise intervals.</dd>
+        <dt>Collision threshold</dt><dd>A configurable force or torque limit; when exceeded, the controller triggers a protective stop reflex.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §9.1  Simulation vs. Real Hardware
@@ -97,8 +102,10 @@
 
       <p>
         Gazebo faithfully emulates the ROS&nbsp;2 interface so that the same Python code
-        runs in simulation and on hardware. However, several important differences emerge
-        when you plug in the real arm:
+        runs in simulation and on hardware — this was the whole point of designing the software
+        stack the way Chapter&nbsp;1 described it. However, several important differences emerge
+        when you plug in the real arm. Most are not bugs; they are simply the realities of
+        physics that the simulator approximates imperfectly:
       </p>
 
       <table>
@@ -157,11 +164,13 @@
       <h2>9.2 Network &amp; Communication Setup</h2>
 
       <p>
-        The Panda's Franka Control Interface (FCI) requires a direct, dedicated Gigabit
-        Ethernet connection between the robot's base unit and the control PC. The FCI uses
-        a proprietary UDP-based protocol to exchange 1&nbsp;kHz control packets; sharing
-        that NIC with regular network traffic introduces jitter that triggers the robot's
-        watchdog and causes protective stops.
+        The Panda's Franka Control Interface (FCI) — introduced in Chapter&nbsp;1 as the
+        bottom layer of the software stack — requires a direct, dedicated Gigabit Ethernet
+        connection between the robot's base unit and the control PC. The FCI uses a
+        proprietary UDP-based protocol to exchange 1&nbsp;kHz control packets; sharing that
+        NIC with regular network traffic introduces timing jitter that triggers the robot's
+        watchdog and causes protective stops. Think of it like a dedicated emergency lane on
+        a highway: the moment regular traffic enters it, response times suffer.
       </p>
 
       <!-- ── Figure 9.1: hardware communication diagram ── -->
@@ -227,6 +236,9 @@
 
       <h3>9.2.1 Network Configuration</h3>
 
+      <p>Run these commands in a terminal on the Ubuntu control PC. Replace <code>eth0</code> with the actual name of your dedicated Ethernet interface (find it with <code>ip link show</code>). After a successful ping you should see something like <code>64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=0.4 ms</code>.</p>
+
+      <div class="code-header">bash — Ubuntu control PC, before starting franka_ros2</div>
       <pre><code class="language-bash"># Assign a static IP to the FCI NIC (adapt interface name as needed)
 sudo ip addr add 192.168.1.100/24 dev eth0
 sudo ip link set eth0 up
@@ -364,6 +376,9 @@ def set_collision_thresholds(node, force_n: float = 20.0,
 
       <h3>9.4.1 Launch Sequence</h3>
 
+      <p>Open <strong>four separate terminals</strong> on your Ubuntu control PC (not inside Docker — real hardware requires a native PREEMPT_RT kernel). Source your workspace in each: <code>source ~/panda_ws/install/setup.bash</code>. Then run the commands below, one per terminal, in order.</p>
+
+      <div class="code-header">bash — real hardware, four terminals in order</div>
       <pre><code class="language-bash"># Terminal 1: launch franka_ros2 with hardware (not simulation)
 ros2 launch franka_bringup franka.launch.py \
     robot_ip:=192.168.1.1 \
@@ -383,6 +398,9 @@ ros2 run controller_manager spawner joint_state_broadcaster</code></pre>
 
       <h3>9.4.2 Homing the Robot</h3>
 
+      <p>Run this in any open terminal (e.g. Terminal 3) after all four launch commands above are running. The arm will move slowly to its home configuration over 5 seconds. Keep your hand near the E-stop.</p>
+
+      <div class="code-header">bash — any terminal, all launch commands already running</div>
       <pre><code class="language-bash"># Send arm to the ready pose (joints at zero-torque configuration)
 ros2 topic pub --once /arm_controller/joint_trajectory \
     trajectory_msgs/msg/JointTrajectory \
@@ -661,12 +679,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 9 Summary — What you learned:</strong>
+      <strong>Chapter 9 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li>The same Python code runs in simulation and on real hardware — the only change is a ROS 2 parameter selecting which backend (Gazebo vs. FCI) to use. This "sim-to-hardware switch pattern" is how professional teams validate code before touching the real arm.</li>
-        <li>The real arm needs a <strong>dedicated Gigabit Ethernet NIC</strong> connected directly to the Panda base — shared network cards cause millisecond-level jitter that triggers a protective stop.</li>
-        <li>The <strong>PREEMPT_RT real-time kernel</strong> is required so that the 1 kHz control loop is never delayed by other Linux processes. Verify with <code>uname -r</code> — the output must contain <code>-rt</code>.</li>
-        <li>Always start at <strong>10% speed</strong> on first hardware runs, watch every state, and keep your hand on the E-stop. Only increase speed after each step proves reliable in simulation at full speed.</li>
+        <li>Transitioning from simulation to real hardware is <strong>not just swapping a parameter</strong>. It requires specific infrastructure that Gazebo never needed: a dedicated Gigabit Ethernet NIC connected directly to the Panda base (shared NICs cause millisecond jitter that triggers protective stops), and a PREEMPT_RT real-time Linux kernel so the 1&nbsp;kHz control loop is never delayed by other OS processes. Without both, the real arm will fault repeatedly.</li>
+        <li>The same Python code that ran in Gazebo does run on real hardware — but treat the transition as a new experiment, not a formality. Verify the RT kernel with <code>uname -r</code> (must contain <code>-rt</code>), ping the arm to confirm Ethernet latency, and check all joint states before sending any goal. Assumptions that held in simulation often break on the first hardware run.</li>
+        <li>Follow the <strong>graduated speed protocol</strong>: first run at 10% speed with your hand on the E-stop. Only increase to 25%, then 50%, then full speed after each prior level runs reliably through the complete motion sequence multiple times without faults. Skipping levels is how arms get damaged.</li>
+        <li>Every motion intended for real hardware should first pass at <strong>full speed in simulation</strong>. If the simulated trajectory looks wrong, fix it in Gazebo — the real arm will not give you a second chance if the trajectory is bad.</li>
       </ul>
     </div>
 
@@ -696,37 +714,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h2>Key Terms</h2>
-      <dl>
-        <dt>PREEMPT_RT</dt>
-        <dd>A Linux kernel patch that makes the kernel fully preemptible, reducing
-            scheduling jitter to enable hard real-time operation at 1&nbsp;kHz.</dd>
-        <dt>Franka Control Interface (FCI)</dt>
-        <dd>The UDP-based protocol over Gigabit Ethernet that allows external computers
-            to stream 1&nbsp;kHz control commands to the Panda base unit.</dd>
-        <dt>Protective stop</dt>
-        <dd>A reversible stop triggered by a reflex (contact force, velocity limit, or
-            watchdog timeout); recoverable via error-recovery service call.</dd>
-        <dt>Emergency stop (E-stop)</dt>
-        <dd>A hard stop that cuts motor power within 1&nbsp;ms; requires manual release and
-            software recovery before motion can resume.</dd>
-        <dt>Watchdog timer</dt>
-        <dd>The FCI safety mechanism that triggers a protective stop if no control packet
-            arrives within a fixed timeout (default 1&nbsp;ms).</dd>
-        <dt>EtherCAT</dt>
-        <dd>The real-time industrial Ethernet bus used internally between the Panda base
-            unit and the seven joint motor drives.</dd>
-        <dt>cyclictest</dt>
-        <dd>A standard Linux real-time benchmark tool that measures scheduling latency
-            by waking a high-priority thread at precise intervals.</dd>
-        <dt>Collision threshold</dt>
-        <dd>A configurable force or torque limit; when exceeded by a measured value, the
-            controller triggers a protective stop reflex.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

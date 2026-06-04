@@ -73,21 +73,33 @@
       A robot arm is a machine that can pick up, move, and place objects — just like a human arm, but programmable. This chapter introduces the specific arm we use (the Franka Panda), the software that makes it work, and how to get everything installed on your computer. <strong>No robotics background required.</strong> If you know a little Python and can use a terminal, you are ready to start.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
+    <!-- ════════════════════════════════════════════════════
+         Key Terms
+         ════════════════════════════════════════════════════ -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 1</h3>
+      <dl>
         <dt>Robot arm</dt><dd>A mechanical arm made of motors and rigid pieces that can be programmed to move to any position.</dd>
         <dt>Joint</dt><dd>A motor-driven connection between two rigid pieces of the arm. Each joint adds one direction of movement (rotation). Think of your elbow or shoulder.</dd>
         <dt>Link</dt><dd>One of the rigid pieces between joints — like the bones in your arm.</dd>
-        <dt>DOF — Degree of Freedom</dt><dd>The number of independent directions something can move. The Panda has 7 joints, so 7 DOF. A human arm has about 7 too.</dd>
+        <dt>DOF</dt><dd>Degree of Freedom — the number of independent directions something can move. The Panda has 7 joints, so 7 DOF.</dd>
+        <dt>Revolute joint</dt><dd>A joint that rotates about a single fixed axis.</dd>
         <dt>Torque</dt><dd>A rotational force — the force used to turn a bolt with a wrench. Measured in Newton-meters (N·m).</dd>
         <dt>End-effector (EEF)</dt><dd>The "hand" at the very tip of the arm — often a gripper that can open and close to pick up objects.</dd>
         <dt>ROS 2</dt><dd>An open-source software framework that robot programs use to talk to each other. Like an operating system, but specifically for robots.</dd>
-        <dt>Node</dt><dd>One program in ROS 2. Each node does one specific job: read a sensor, plan a path, move a motor, etc.</dd>
-        <dt>Topic</dt><dd>A shared data channel in ROS 2. Nodes publish (send) data to a topic; other nodes subscribe (listen) to receive it.</dd>
-        <dt>FCI — Franka Control Interface</dt><dd>The low-level communication protocol between a PC and the Panda arm. It runs over Ethernet at 1,000 messages per second.</dd>
+        <dt>Node</dt><dd>An independent ROS&nbsp;2 process that does one specific job and communicates via topics, services, or actions.</dd>
+        <dt>Topic</dt><dd>A named, one-directional data stream in ROS&nbsp;2. Nodes publish data to a topic; other nodes subscribe to receive it.</dd>
+        <dt>Action</dt><dd>A ROS&nbsp;2 interface for long-running tasks with goal, feedback, and result.</dd>
+        <dt>FCI</dt><dd>Franka Control Interface — the low-level 1&nbsp;kHz Ethernet protocol between a PC and the Panda arm.</dd>
+        <dt>libfranka</dt><dd>Franka's official C++ library that wraps the FCI protocol.</dd>
+        <dt>MoveIt&nbsp;2</dt><dd>The ROS&nbsp;2 motion planning framework used throughout this tutorial.</dd>
+        <dt>Torque sensor</dt><dd>Measures the rotational force at a joint; enables compliance and safety reflexes.</dd>
+        <dt>Gazebo</dt><dd>A physics-based robot simulator. Simulates the arm on your computer so you can test code safely before touching real hardware.</dd>
+        <dt>Isaac Sim</dt><dd>NVIDIA's photorealistic robot simulator. Uses a GPU to render camera images that look like real photographs — important for training AI vision models.</dd>
+        <dt>Docker</dt><dd>A tool that packages a complete Linux environment — with all software pre-installed — into a self-contained "container" that runs on any computer. Used in this tutorial so macOS and Windows users can run ROS&nbsp;2 without a separate Linux machine.</dd>
+        <dt>Container</dt><dd>A lightweight, isolated environment created by Docker. Like a mini-PC running inside your laptop: it has its own operating system and installed packages, but shares your files and screen.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════════
          §1.1  The Franka Emika Panda
@@ -100,7 +112,8 @@
         designed for research and industrial tasks that require close interaction with people
         <a class="cite" href="#ref1">[1]</a>.
         It is manufactured by Franka Robotics GmbH (formerly Franka Emika GmbH) and is widely used in
-        university robotics labs worldwide.
+        university robotics labs worldwide. We chose it for this tutorial because it combines cutting-edge
+        hardware with excellent open-source software support — a rare combination in robotics.
       </p>
 
       <p>
@@ -108,7 +121,8 @@
         Every one of its seven joints contains a high-resolution torque sensor that measures the force
         being applied at that joint 1,000 times per second. This allows the robot to detect unexpected
         contact, respond compliantly to human touch, and execute delicate manipulation tasks that would
-        be impossible with a rigid position-controlled arm.
+        be impossible with a rigid position-controlled arm. That torque sensing is also why the advanced
+        control modes in Chapter&nbsp;7 are even possible.
       </p>
 
       <h3>1.1.1 Physical Anatomy</h3>
@@ -124,114 +138,114 @@
       <!-- ── Figure 1.1: Panda Anatomy ── -->
       <figure id="fig1-1">
         <div class="figure-inner">
-          <svg viewBox="0 0 620 520" width="580" xmlns="http://www.w3.org/2000/svg"
+          <svg viewBox="0 0 600 540" width="560" xmlns="http://www.w3.org/2000/svg"
                font-family="Inter, system-ui, sans-serif" font-size="12">
 
-            <!-- Background -->
-            <rect width="620" height="520" fill="#fafbfc" rx="4"/>
+            <rect width="600" height="540" fill="#fafbfc" rx="4"/>
 
-            <!-- ── Base ── -->
-            <rect x="240" y="470" width="140" height="28" rx="4" fill="#c8d0dc" stroke="#8896aa" stroke-width="1.5"/>
-            <text x="310" y="488" text-anchor="middle" font-size="11" fill="#555">Base / Mounting Flange</text>
+            <!-- ═══════════════════════════════
+                 ARM (center column x=260)
+                 Joints laid out bottom→top
+                 ═══════════════════════════════ -->
 
-            <!-- ── Link 1 (vertical riser) ── -->
-            <rect x="278" y="390" width="64" height="82" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Base -->
+            <rect x="190" y="490" width="140" height="26" rx="4" fill="#c8d0dc" stroke="#8896aa" stroke-width="1.5"/>
+            <text x="260" y="507" text-anchor="middle" font-size="10" fill="#555">Base (frame 0)</text>
 
-            <!-- ── Joint 1 circle ── -->
-            <circle cx="310" cy="390" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
-            <text x="310" y="394" text-anchor="middle" fill="white" font-weight="700" font-size="12">J1</text>
+            <!-- Link 1 -->
+            <rect x="234" y="428" width="52" height="64" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Joint 1 — large, base of arm -->
+            <circle cx="260" cy="428" r="20" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="260" y="433" text-anchor="middle" fill="white" font-weight="700" font-size="12">J1</text>
 
-            <!-- ── Link 2 (elbow up) ── -->
-            <rect x="278" y="305" width="64" height="88" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Link 2 -->
+            <rect x="234" y="345" width="52" height="86" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Joint 2 -->
+            <circle cx="260" cy="345" r="20" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="260" y="350" text-anchor="middle" fill="white" font-weight="700" font-size="12">J2</text>
 
-            <!-- ── Joint 2 ── -->
-            <circle cx="310" cy="305" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
-            <text x="310" y="309" text-anchor="middle" fill="white" font-weight="700" font-size="12">J2</text>
+            <!-- Link 3 -->
+            <rect x="234" y="264" width="52" height="84" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Joint 3 -->
+            <circle cx="260" cy="264" r="20" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="260" y="269" text-anchor="middle" fill="white" font-weight="700" font-size="12">J3</text>
 
-            <!-- ── Link 3 (angled forearm) ── -->
-            <line x1="310" y1="287" x2="360" y2="225" stroke="#8896aa" stroke-width="2"/>
-            <rect x="278" y="223" width="64" height="66" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"
-                  transform="rotate(-30 310 256)"/>
+            <!-- Link 4 -->
+            <rect x="234" y="184" width="52" height="83" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Joint 4 -->
+            <circle cx="260" cy="184" r="20" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
+            <text x="260" y="189" text-anchor="middle" fill="white" font-weight="700" font-size="12">J4</text>
 
-            <!-- ── Joint 3 ── -->
-            <circle cx="310" cy="225" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
-            <text x="310" y="229" text-anchor="middle" fill="white" font-weight="700" font-size="12">J3</text>
+            <!-- ── Wrist group (lighter blue) ── -->
+            <!-- Link 5 -->
+            <rect x="240" y="136" width="40" height="51" rx="5" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- Joint 5 -->
+            <circle cx="260" cy="136" r="17" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
+            <text x="260" y="141" text-anchor="middle" fill="white" font-weight="700" font-size="11">J5</text>
 
-            <!-- ── Link 4 ── -->
-            <rect x="278" y="148" width="64" height="80" rx="6" fill="#dde3ec" stroke="#8896aa" stroke-width="1.5"/>
+            <!-- Link 6 -->
+            <rect x="244" y="100" width="32" height="38" rx="4" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- Joint 6 -->
+            <circle cx="260" cy="100" r="14" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
+            <text x="260" y="105" text-anchor="middle" fill="white" font-weight="700" font-size="10">J6</text>
 
-            <!-- ── Joint 4 ── -->
-            <circle cx="310" cy="148" r="18" fill="#0057b8" stroke="#003d82" stroke-width="2"/>
-            <text x="310" y="152" text-anchor="middle" fill="white" font-weight="700" font-size="12">J4</text>
+            <!-- Link 7 -->
+            <rect x="247" y="72" width="26" height="30" rx="4" fill="#a8c8e8" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- Joint 7 -->
+            <circle cx="260" cy="72" r="12" fill="#3498db" stroke="#2471a3" stroke-width="2"/>
+            <text x="260" y="76" text-anchor="middle" fill="white" font-weight="700" font-size="10">J7</text>
 
-            <!-- ── Link 5 (wrist section) ── -->
-            <rect x="278" y="90" width="64" height="60" rx="6" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- EEF flange -->
+            <rect x="242" y="50" width="36" height="18" rx="3" fill="#f39c12" stroke="#d68910" stroke-width="1.5"/>
+            <text x="260" y="63" text-anchor="middle" fill="white" font-weight="700" font-size="9">EEF</text>
 
-            <!-- ── Joint 5 ── -->
-            <circle cx="310" cy="90" r="16" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
-            <text x="310" y="94" text-anchor="middle" fill="white" font-weight="700" font-size="11">J5</text>
+            <!-- ═══════════════════════════
+                 RIGHT ANNOTATIONS
+                 ═══════════════════════════ -->
 
-            <!-- ── Link 6 ── -->
-            <rect x="288" y="55" width="44" height="37" rx="5" fill="#c8d8f0" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- EEF -->
+            <line x1="278" y1="59" x2="340" y2="59" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="344" y="56" fill="#333" font-size="11" font-weight="600">End-Effector Flange</text>
+            <text x="344" y="70" fill="#888" font-size="10">Gripper / tool mounts here</text>
 
-            <!-- ── Joint 6 ── -->
-            <circle cx="310" cy="55" r="14" fill="#2980b9" stroke="#1a5f8a" stroke-width="2"/>
-            <text x="310" y="59" text-anchor="middle" fill="white" font-weight="700" font-size="11">J6</text>
+            <!-- Wrist group bracket -->
+            <line x1="277" y1="100" x2="340" y2="100" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="344" y="97" fill="#333" font-size="11" font-weight="600">Joints 5–7: Wrist</text>
+            <text x="344" y="111" fill="#888" font-size="10">Fine orientation control</text>
 
-            <!-- ── Link 7 + EEF ── -->
-            <rect x="295" y="28" width="30" height="29" rx="4" fill="#a8c8e8" stroke="#5588cc" stroke-width="1.5"/>
+            <!-- Torque sensor (points at J5, most visible) -->
+            <line x1="277" y1="136" x2="340" y2="148" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="4,3"/>
+            <text x="344" y="148" fill="#c0392b" font-size="11" font-weight="600">Torque Sensor</text>
+            <text x="344" y="162" fill="#888" font-size="10">1 kHz, at every joint</text>
+            <text x="344" y="175" fill="#888" font-size="10">Enables safe force control</text>
 
-            <!-- ── Joint 7 ── -->
-            <circle cx="310" cy="28" r="12" fill="#3498db" stroke="#2471a3" stroke-width="2"/>
-            <text x="310" y="32" text-anchor="middle" fill="white" font-weight="700" font-size="10">J7</text>
+            <!-- Arm group (J1–J4) -->
+            <line x1="280" y1="184" x2="340" y2="205" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="344" y="205" fill="#333" font-size="11" font-weight="600">Joints 1–4: Arm</text>
+            <text x="344" y="219" fill="#888" font-size="10">Gross positioning of EEF</text>
 
-            <!-- ── EEF / Flange ── -->
-            <rect x="292" y="8" width="36" height="14" rx="3" fill="#f39c12" stroke="#d68910" stroke-width="1.5"/>
-            <text x="310" y="19" text-anchor="middle" fill="white" font-weight="700" font-size="9">EEF</text>
+            <!-- ═══════════════════════════
+                 LEFT ANNOTATIONS
+                 ═══════════════════════════ -->
 
-            <!-- ══ ANNOTATION LINES & LABELS (right side) ══ -->
+            <!-- Revolute joint callout (at J2) -->
+            <line x1="240" y1="345" x2="180" y2="345" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="10" y="338" fill="#333" font-size="11" font-weight="600">Revolute Joint</text>
+            <text x="10" y="352" fill="#888" font-size="10">Rotates about one axis</text>
 
-            <!-- EEF label -->
-            <line x1="328" y1="15" x2="405" y2="22" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-            <text x="408" y="26" fill="#333" font-size="11">End-Effector Flange</text>
-            <text x="408" y="39" fill="#888" font-size="10">Gripper / tool mounts here</text>
+            <!-- Rigid link callout -->
+            <line x1="234" y1="390" x2="180" y2="390" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+            <text x="10" y="383" fill="#333" font-size="11" font-weight="600">Rigid Link</text>
+            <text x="10" y="397" fill="#888" font-size="10">Aluminum structural member</text>
 
-            <!-- J7 label -->
-            <line x1="322" y1="28" x2="405" y2="58" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-            <text x="408" y="62" fill="#333" font-size="11">Joints 5 – 7: Wrist</text>
-            <text x="408" y="75" fill="#888" font-size="10">Fine orientation control</text>
+            <!-- Specs block -->
+            <text x="10" y="445" fill="#0057b8" font-weight="700" font-size="13">7 DOF total</text>
+            <text x="10" y="461" fill="#555" font-size="11">Joints 1–7, all revolute</text>
+            <text x="10" y="476" fill="#555" font-size="11">Max reach: 855 mm</text>
+            <text x="10" y="491" fill="#555" font-size="11">Payload: 3 kg</text>
 
-            <!-- Torque sensor callout -->
-            <line x1="328" y1="90" x2="405" y2="105" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="4,3"/>
-            <text x="408" y="109" fill="#c0392b" font-size="11" font-weight="600">Torque Sensor</text>
-            <text x="408" y="122" fill="#888" font-size="10">1 kHz, at every joint</text>
-            <text x="408" y="134" fill="#888" font-size="10">Enables impedance control</text>
-
-            <!-- J4 label -->
-            <line x1="328" y1="148" x2="405" y2="170" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-            <text x="408" y="174" fill="#333" font-size="11">Joints 1 – 4: Arm</text>
-            <text x="408" y="187" fill="#888" font-size="10">Gross positioning of EEF</text>
-
-            <!-- Left side annotations -->
-
-            <!-- J1 / revolute -->
-            <line x1="292" y1="390" x2="170" y2="382" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-            <text x="50" y="379" fill="#333" font-size="11">Revolute Joint</text>
-            <text x="50" y="392" fill="#888" font-size="10">Rotates about a single axis</text>
-
-            <!-- Link -->
-            <line x1="282" y1="345" x2="170" y2="330" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-            <text x="50" y="327" fill="#333" font-size="11">Rigid Link</text>
-            <text x="50" y="340" fill="#888" font-size="10">Aluminum structural member</text>
-
-            <!-- DOF count -->
-            <text x="50" y="455" fill="#0057b8" font-weight="700" font-size="13">7 DOF total</text>
-            <text x="50" y="470" fill="#555" font-size="11">Joints 1–7, all revolute</text>
-            <text x="50" y="484" fill="#555" font-size="11">Max reach: 855 mm</text>
-            <text x="50" y="497" fill="#555" font-size="11">Payload: 3 kg</text>
-
-            <!-- title -->
-            <text x="310" y="508" text-anchor="middle" fill="#aaa" font-size="10">
+            <!-- Caption -->
+            <text x="260" y="526" text-anchor="middle" fill="#bbb" font-size="10">
               Franka Emika Panda — schematic (not to scale)
             </text>
           </svg>
@@ -287,14 +301,16 @@
         building robot software <a class="cite" href="#ref3">[3]</a>. Despite the name, it is not an
         operating system — it runs on top of Linux (or Windows/macOS). Think of it as a standardized
         <em>communication bus</em> that lets separate programs — called <strong>nodes</strong> — talk to
-        each other as if they were one integrated application.
+        each other as if they were one integrated application. Every piece of software in this tutorial
+        is a ROS&nbsp;2 node.
       </p>
 
       <p>
         Without ROS&nbsp;2, you would need to write custom networking code every time two parts of your
         robot software needed to share data. With ROS&nbsp;2, a sensor driver, a motion planner, a
         visualizer, and your control code can all run as independent processes and exchange data through
-        a well-defined API.
+        a well-defined API. This is the foundation on which MoveIt&nbsp;2 (Chapter&nbsp;8) and the
+        simulation environment (Chapter&nbsp;3) are both built.
       </p>
 
       <div class="callout callout-analogy">
@@ -326,7 +342,8 @@
 
       <p>
         Figure&nbsp;1.2 shows these three primitives side by side. Mastering them is the
-        prerequisite to reading any ROS&nbsp;2 node graph.
+        prerequisite to reading any ROS&nbsp;2 node graph — and you will see all three in action
+        throughout this tutorial.
       </p>
 
       <!-- ── Figure 1.2: ROS 2 Communication Primitives ── -->
@@ -428,111 +445,113 @@
       <!-- ── Figure 1.3: ROS 2 Node Graph ── -->
       <figure id="fig1-3">
         <div class="figure-inner">
-          <svg viewBox="0 0 700 400" width="660" xmlns="http://www.w3.org/2000/svg"
+          <svg viewBox="0 0 700 420" width="660" xmlns="http://www.w3.org/2000/svg"
                font-family="Inter, system-ui, sans-serif" font-size="12">
 
-            <rect width="700" height="400" fill="#fafbfc" rx="4"/>
+            <rect width="700" height="420" fill="#fafbfc" rx="4"/>
 
-            <!-- ── Helper: node box macro ── -->
-            <!-- franka_ros2 / hardware interface -->
-            <rect x="20" y="160" width="145" height="52" rx="6" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
-            <text x="93" y="181" text-anchor="middle" fill="white" font-weight="700" font-size="12">franka_ros2</text>
-            <text x="93" y="197" text-anchor="middle" fill="#b8d4f5" font-size="10">Hardware Interface</text>
-            <text x="93" y="208" text-anchor="middle" fill="#b8d4f5" font-size="10">(real) / Gazebo (sim)</text>
-
-            <!-- robot_state_publisher -->
-            <rect x="20" y="60" width="145" height="44" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
-            <text x="93" y="86" text-anchor="middle" fill="white" font-weight="700" font-size="11">robot_state_publisher</text>
-
-            <!-- controller_manager -->
-            <rect x="20" y="280" width="145" height="44" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
-            <text x="93" y="306" text-anchor="middle" fill="white" font-weight="700" font-size="11">controller_manager</text>
-
-            <!-- move_group -->
-            <rect x="275" y="150" width="150" height="52" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
-            <text x="350" y="170" text-anchor="middle" fill="white" font-weight="700" font-size="12">move_group</text>
-            <text x="350" y="186" text-anchor="middle" fill="#a9dfbf" font-size="10">MoveIt 2 planning server</text>
-            <text x="350" y="198" text-anchor="middle" fill="#a9dfbf" font-size="10">OMPL, collision checks</text>
-
-            <!-- rviz2 -->
-            <rect x="275" y="50" width="150" height="44" rx="6" fill="#8e44ad" stroke="#6c3483" stroke-width="1.5"/>
-            <text x="350" y="71" text-anchor="middle" fill="white" font-weight="700" font-size="12">rviz2</text>
-            <text x="350" y="86" text-anchor="middle" fill="#d7bde2" font-size="10">3D visualization</text>
-
-            <!-- user_node -->
-            <rect x="530" y="150" width="145" height="52" rx="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
-            <text x="603" y="170" text-anchor="middle" fill="white" font-weight="700" font-size="12">your_node.py</text>
-            <text x="603" y="186" text-anchor="middle" fill="#fdebd0" font-size="10">User Python code</text>
-            <text x="603" y="198" text-anchor="middle" fill="#fdebd0" font-size="10">MoveGroup client</text>
-
-            <!-- Gazebo (sim only) -->
-            <rect x="275" y="280" width="150" height="44" rx="6" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.5"/>
-            <text x="350" y="298" text-anchor="middle" fill="white" font-weight="700" font-size="12">gazebo</text>
-            <text x="350" y="312" text-anchor="middle" fill="#ecf0f1" font-size="10">Physics simulation</text>
-
-            <!-- ══ ARROWS / TOPICS ══ -->
-
-            <!-- franka_ros2 → robot_state_publisher : /joint_states -->
-            <line x1="93" y1="160" x2="93" y2="104" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="97" y="135" fill="#0057b8" font-size="9">/joint_states</text>
-
-            <!-- robot_state_pub → rviz2 : /tf -->
-            <line x1="165" y1="82" x2="275" y2="72" stroke="#2980b9" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="200" y="68" fill="#2980b9" font-size="9">/tf, /tf_static</text>
-
-            <!-- franka_ros2 → move_group : /joint_states -->
-            <line x1="165" y1="176" x2="275" y2="176" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="188" y="170" fill="#0057b8" font-size="9">/joint_states</text>
-
-            <!-- move_group → rviz2 : planning scene (right side, clear of other arrows) -->
-            <path d="M 425 165 L 460 165 L 460 72 L 425 72" fill="none" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="471" y="118" fill="#27ae60" font-size="9">/planning</text>
-            <text x="471" y="130" fill="#27ae60" font-size="9">_scene</text>
-
-            <!-- user_node → move_group : MoveGroup action -->
-            <line x1="530" y1="176" x2="425" y2="176" stroke="#e67e22" stroke-width="2" marker-end="url(#arr)"/>
-            <text x="444" y="163" fill="#e67e22" font-size="9">MoveGroup</text>
-            <text x="444" y="186" fill="#e67e22" font-size="9">action (goal)</text>
-
-            <!-- move_group → user_node : result/feedback -->
-            <line x1="425" y1="192" x2="530" y2="192" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr2)"/>
-            <text x="447" y="207" fill="#27ae60" font-size="9">result / feedback</text>
-
-            <!-- move_group → controller_manager : L-shaped path (down then left) -->
-            <path d="M 280 202 L 230 202 L 230 302 L 165 302" fill="none" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="234" y="252" fill="#27ae60" font-size="9">follow_joint_trajectory</text>
-
-            <!-- controller_manager → franka_ros2 -->
-            <line x1="93" y1="280" x2="93" y2="212" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="96" y="250" fill="#1a5276" font-size="9">hw_commands</text>
-
-            <!-- controller_manager → gazebo -->
-            <line x1="165" y1="302" x2="275" y2="302" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="190" y="296" fill="#1a5276" font-size="9">/cmd (sim)</text>
-
-            <!-- defs for arrowheads -->
             <defs>
               <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
                 <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
               </marker>
-              <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <marker id="arr-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
                 <path d="M0,0 L0,6 L8,3 z" fill="#27ae60"/>
               </marker>
             </defs>
 
-            <!-- legend -->
-            <rect x="530" y="270" width="150" height="105" rx="4" fill="#f0f0f0" stroke="#ccc"/>
-            <text x="605" y="286" text-anchor="middle" font-weight="700" fill="#333" font-size="11">Legend</text>
-            <line x1="540" y1="300" x2="570" y2="300" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
-            <text x="575" y="304" fill="#333" font-size="10">Topic / Action</text>
-            <line x1="540" y1="318" x2="570" y2="318" stroke="#555" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
-            <text x="575" y="322" fill="#333" font-size="10">Response</text>
-            <rect x="540" y="330" width="18" height="12" rx="2" fill="#0057b8"/>
-            <text x="563" y="341" fill="#333" font-size="10">Hardware layer</text>
-            <rect x="540" y="348" width="18" height="12" rx="2" fill="#27ae60"/>
-            <text x="563" y="359" fill="#333" font-size="10">Planning layer</text>
-            <rect x="540" y="366" width="18" height="12" rx="2" fill="#e67e22"/>
-            <text x="563" y="377" fill="#333" font-size="10">User code</text>
+            <!-- ── LEFT COLUMN ── -->
+            <!-- robot_state_publisher -->
+            <rect x="20" y="30" width="145" height="44" rx="6" fill="#2980b9" stroke="#1a6491" stroke-width="1.5"/>
+            <text x="93" y="55" text-anchor="middle" fill="white" font-weight="700" font-size="11">robot_state_publisher</text>
+
+            <!-- franka_ros2 / hardware interface -->
+            <rect x="20" y="140" width="145" height="52" rx="6" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
+            <text x="93" y="161" text-anchor="middle" fill="white" font-weight="700" font-size="12">franka_ros2</text>
+            <text x="93" y="177" text-anchor="middle" fill="#b8d4f5" font-size="10">Hardware Interface</text>
+            <text x="93" y="189" text-anchor="middle" fill="#b8d4f5" font-size="10">(real) / Gazebo (sim)</text>
+
+            <!-- ── CENTER COLUMN ── -->
+            <!-- rviz2 -->
+            <rect x="275" y="30" width="150" height="44" rx="6" fill="#8e44ad" stroke="#6c3483" stroke-width="1.5"/>
+            <text x="350" y="51" text-anchor="middle" fill="white" font-weight="700" font-size="12">rviz2</text>
+            <text x="350" y="66" text-anchor="middle" fill="#d7bde2" font-size="10">3D visualization</text>
+
+            <!-- move_group -->
+            <rect x="275" y="140" width="150" height="52" rx="6" fill="#27ae60" stroke="#1e8449" stroke-width="1.5"/>
+            <text x="350" y="161" text-anchor="middle" fill="white" font-weight="700" font-size="12">move_group</text>
+            <text x="350" y="177" text-anchor="middle" fill="#a9dfbf" font-size="10">MoveIt 2 planning server</text>
+            <text x="350" y="189" text-anchor="middle" fill="#a9dfbf" font-size="10">OMPL, collision checks</text>
+
+            <!-- controller_manager  ← now directly below move_group -->
+            <rect x="275" y="258" width="150" height="44" rx="6" fill="#1a5276" stroke="#154360" stroke-width="1.5"/>
+            <text x="350" y="284" text-anchor="middle" fill="white" font-weight="700" font-size="11">controller_manager</text>
+
+            <!-- ── RIGHT COLUMN ── -->
+            <!-- your_node.py -->
+            <rect x="530" y="140" width="145" height="52" rx="6" fill="#e67e22" stroke="#ca6f1e" stroke-width="1.5"/>
+            <text x="603" y="161" text-anchor="middle" fill="white" font-weight="700" font-size="12">your_node.py</text>
+            <text x="603" y="177" text-anchor="middle" fill="#fdebd0" font-size="10">User Python code</text>
+            <text x="603" y="189" text-anchor="middle" fill="#fdebd0" font-size="10">MoveGroup client</text>
+
+            <!-- gazebo (sim only) -->
+            <rect x="530" y="258" width="145" height="44" rx="6" fill="#95a5a6" stroke="#7f8c8d" stroke-width="1.5"/>
+            <text x="603" y="279" text-anchor="middle" fill="white" font-weight="700" font-size="12">gazebo</text>
+            <text x="603" y="294" text-anchor="middle" fill="#ecf0f1" font-size="10">Physics simulation</text>
+
+            <!-- ══ ARROWS ══ -->
+
+            <!-- franka_ros2 → robot_state_publisher : /joint_states (up) -->
+            <line x1="93" y1="140" x2="93" y2="74" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="97" y="110" fill="#0057b8" font-size="9">/joint_states</text>
+
+            <!-- robot_state_pub → rviz2 : /tf, /tf_static -->
+            <line x1="165" y1="52" x2="275" y2="52" stroke="#2980b9" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="183" y="46" fill="#2980b9" font-size="9">/tf, /tf_static</text>
+
+            <!-- franka_ros2 → move_group : /joint_states (right) -->
+            <line x1="165" y1="168" x2="275" y2="168" stroke="#0057b8" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="183" y="162" fill="#0057b8" font-size="9">/joint_states</text>
+
+            <!-- move_group → rviz2 : /planning_scene (L-shape right side) -->
+            <path d="M 425 155 L 455 155 L 455 52 L 425 52" fill="none" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="459" y="102" fill="#27ae60" font-size="9">/planning</text>
+            <text x="459" y="114" fill="#27ae60" font-size="9">_scene</text>
+
+            <!-- your_node → move_group : MoveGroup action goal -->
+            <line x1="530" y1="160" x2="425" y2="160" stroke="#e67e22" stroke-width="2" marker-end="url(#arr)"/>
+            <text x="437" y="150" fill="#e67e22" font-size="9">MoveGroup</text>
+            <text x="437" y="160" fill="#e67e22" font-size="9">action (goal)</text>
+
+            <!-- move_group → your_node : result / feedback (dashed) -->
+            <line x1="425" y1="178" x2="530" y2="178" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-grn)"/>
+            <text x="433" y="194" fill="#27ae60" font-size="9">result / feedback</text>
+
+            <!-- move_group → controller_manager : trajectory commands (STRAIGHT DOWN) -->
+            <line x1="350" y1="192" x2="350" y2="258" stroke="#27ae60" stroke-width="2" marker-end="url(#arr)"/>
+            <text x="354" y="227" fill="#27ae60" font-size="9">trajectory</text>
+            <text x="354" y="239" fill="#27ae60" font-size="9">commands</text>
+
+            <!-- controller_manager → franka_ros2 : hw_commands (L-shape left) -->
+            <path d="M 275 280 L 218 280 L 218 178 L 165 178" fill="none" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="222" y="234" fill="#1a5276" font-size="9">hw_cmds</text>
+
+            <!-- controller_manager → gazebo : /cmd sim (right) -->
+            <line x1="425" y1="280" x2="530" y2="280" stroke="#1a5276" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="444" y="274" fill="#1a5276" font-size="9">/cmd (sim)</text>
+
+            <!-- ── LEGEND ── -->
+            <rect x="20" y="332" width="220" height="76" rx="4" fill="#f0f0f0" stroke="#ccc"/>
+            <text x="130" y="349" text-anchor="middle" font-weight="700" fill="#333" font-size="11">Legend</text>
+            <line x1="32" y1="364" x2="60" y2="364" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+            <text x="66" y="368" fill="#333" font-size="10">Topic / Action (command)</text>
+            <line x1="32" y1="382" x2="60" y2="382" stroke="#555" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+            <text x="66" y="386" fill="#333" font-size="10">Response / feedback</text>
+            <rect x="32" y="394" width="14" height="10" rx="2" fill="#27ae60"/>
+            <text x="51" y="403" fill="#333" font-size="10">Planning</text>
+            <rect x="110" y="394" width="14" height="10" rx="2" fill="#0057b8"/>
+            <text x="129" y="403" fill="#333" font-size="10">Hardware</text>
+            <rect x="188" y="394" width="14" height="10" rx="2" fill="#e67e22"/>
+            <text x="207" y="403" fill="#333" font-size="10">User</text>
           </svg>
         </div>
         <figcaption>
@@ -562,7 +581,9 @@
       <p>
         Between your Python code and the physical motors are several layers of software. Each layer
         provides an abstraction: you write a goal in terms of "meters and radians," and the layers
-        below translate that into motor currents at 1&nbsp;kHz. Figure&nbsp;1.4 shows these layers
+        below translate that into motor currents at 1&nbsp;kHz. This is powerful because you never
+        have to think about raw motor signals — but it does mean that when something goes wrong,
+        you need to know which layer is responsible. Figure&nbsp;1.4 shows these layers
         from top to bottom.
       </p>
 
@@ -689,6 +710,15 @@
           trajectories. This is what all of the code examples in this tutorial are written in.
         </dd>
       </dl>
+
+      <div class="callout callout-note">
+        <strong>What about Isaac Sim?</strong>
+        <a href="https://developer.nvidia.com/isaac/sim" target="_blank">Isaac Sim</a> (by NVIDIA) is a second simulator worth knowing about.
+        Unlike Gazebo — which focuses on accurate physics — Isaac Sim renders <em>photorealistic</em> camera images using a GPU ray-tracer.
+        That makes it essential when training AI models to recognise objects: the synthetic training photos need to look like real photographs.
+        For the motion-planning and control topics in Chapters 1–9, Gazebo is simpler, faster to start, and works without a GPU.
+        Chapter&nbsp;10 §10.6 includes a hands-on Isaac Sim bonus project.
+      </div>
     </section>
 
     <!-- ════════════════════════════════════════════════════
@@ -697,11 +727,223 @@
     <section id="installation">
       <h2>1.4 Installation</h2>
 
+      <div class="callout callout-analogy">
+        <strong>What is Docker?</strong>
+        <p style="margin:.5rem 0 0">
+          Imagine you could carry a complete Ubuntu Linux laptop — with ROS&nbsp;2, Gazebo, MoveIt&nbsp;2, and every package already installed — inside a single file on your Mac or Windows PC.
+          That is essentially what <strong>Docker</strong> does.
+        </p>
+        <p style="margin:.5rem 0 0">
+          Docker creates a <em>container</em>: a sealed, lightweight copy of Ubuntu that runs as a normal process on your computer.
+          From inside the container, everything looks and behaves like a real Ubuntu machine.
+          From outside, it is just an app — you can start it, stop it, and throw it away without touching your real operating system.
+        </p>
+        <p style="margin:.5rem 0 0">
+          <strong>Why does that matter?</strong> ROS&nbsp;2 is officially supported only on Ubuntu 22.04.
+          Without Docker, macOS and Windows users would need a separate Linux computer or a complex dual-boot setup.
+          With Docker, you run the full ROS&nbsp;2 stack on any laptop in about five minutes.
+        </p>
+        <p style="margin:.5rem 0 0">
+          <strong>Key things to know before you start:</strong>
+        </p>
+        <ul style="margin:.25rem 0 0 1rem;">
+          <li>Your files on your Mac/PC are shared into the container — edits you make inside Docker are immediately visible outside, and vice versa.</li>
+          <li>When you <em>exit</em> the container, everything you installed inside it is gone (unless you save a snapshot). Your code files are safe because they live on your real computer.</li>
+          <li>Graphical apps (Gazebo, RViz) can appear on your Mac screen using an X11 server called XQuartz — the steps below set that up for you.</li>
+        </ul>
+      </div>
+
       <p>
-        All software in this tutorial runs on <strong>Ubuntu 22.04 LTS</strong> with
-        <strong>ROS&nbsp;2 Humble</strong>. Follow these steps in order. Each command is idempotent —
-        safe to run more than once.
+        This tutorial requires <strong>Ubuntu 22.04 LTS</strong> with <strong>ROS&nbsp;2 Humble</strong>
+        to run the full simulation (Gazebo, RViz, MoveIt&nbsp;2). Read the platform guide below
+        carefully before starting — your choice of computer affects what you can run.
       </p>
+
+      <div class="callout callout-warning">
+        <strong>Platform requirements — read this first:</strong>
+        <table style="width:100%;border-collapse:collapse;margin:.6rem 0;font-size:.88rem">
+          <tr style="background:rgba(0,0,0,.06)">
+            <th style="text-align:left;padding:4px 8px">Platform</th>
+            <th style="text-align:left;padding:4px 8px">Python code</th>
+            <th style="text-align:left;padding:4px 8px">Gazebo / RViz GUI</th>
+            <th style="text-align:left;padding:4px 8px">Real hardware (ch09)</th>
+          </tr>
+          <tr>
+            <td style="padding:4px 8px"><strong>Ubuntu 22.04</strong> (native or VM with GPU)</td>
+            <td style="padding:4px 8px">✅</td>
+            <td style="padding:4px 8px">✅ Full support</td>
+            <td style="padding:4px 8px">✅ (bare-metal only)</td>
+          </tr>
+          <tr style="background:rgba(0,0,0,.03)">
+            <td style="padding:4px 8px"><strong>macOS Apple Silicon</strong> (M1/M2/M3) + Docker</td>
+            <td style="padding:4px 8px">✅</td>
+            <td style="padding:4px 8px">❌ OpenGL blocked</td>
+            <td style="padding:4px 8px">❌</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 8px"><strong>macOS Intel</strong> + Docker + XQuartz</td>
+            <td style="padding:4px 8px">✅</td>
+            <td style="padding:4px 8px">⚠️ Requires extra setup</td>
+            <td style="padding:4px 8px">❌</td>
+          </tr>
+          <tr style="background:rgba(0,0,0,.03)">
+            <td style="padding:4px 8px"><strong>Windows</strong> + Docker + WSLg</td>
+            <td style="padding:4px 8px">✅</td>
+            <td style="padding:4px 8px">⚠️ Requires extra setup</td>
+            <td style="padding:4px 8px">❌</td>
+          </tr>
+        </table>
+        <strong>Bottom line:</strong> Ubuntu 22.04 is the only platform where every chapter works without workarounds.
+        On a Mac, you can read code, run Python files, and use ROS&nbsp;2 nodes — but you cannot see the robot
+        moving in Gazebo or RViz, which is central to Chapters 3–10.
+        <br><br>
+        <strong>If you only have a Mac</strong>, the most practical paths are:
+        <ul style="margin:.4rem 0 0 1rem;">
+          <li><strong>UTM or Parallels</strong> — run a free Ubuntu 22.04 arm64 VM with GPU passthrough. Gazebo and RViz work inside the VM.</li>
+          <li><strong>Cloud Ubuntu VM</strong> (AWS, GCP, DigitalOcean) — SSH in with <code>-X</code> flag or use a VNC desktop. Free-tier machines are sufficient for Chapters 2–8.</li>
+          <li><strong>Docker (code-only)</strong> — use Option A below to run and test Python code, but skip the Gazebo visualization steps until you have access to Ubuntu.</li>
+        </ul>
+      </div>
+
+      <div class="callout callout-note">
+        <strong>Which option should I choose?</strong>
+        <ul style="margin:.5rem 0 0 1rem;">
+          <li><strong>Ubuntu 22.04 natively</strong> → Option B. This is the recommended path — everything works out of the box.</li>
+          <li><strong>macOS or Windows</strong> → Option A (Docker) for code development and headless ROS&nbsp;2 usage. See the warning above for GUI limitations.</li>
+        </ul>
+      </div>
+
+      <!-- ── Option A: Docker ── -->
+      <h3>Option A — Docker <span style="font-weight:400;color:var(--muted)">(code development · macOS · Windows)</span></h3>
+
+      <h4>A1 — Install Docker Desktop</h4>
+      <p>Docker Desktop is a free application that runs containers on your computer.</p>
+      <div class="code-header">bash — macOS (Homebrew, easiest)</div>
+<pre><code class="language-bash">brew install --cask docker</code></pre>
+      <p>Then open Docker Desktop from your Applications folder and wait for the whale icon in your menu bar to stop animating — that means Docker is ready.</p>
+      <div class="callout callout-tip">
+        <strong>No Homebrew?</strong> Download Docker Desktop directly from
+        <a href="https://www.docker.com/products/docker-desktop/" target="_blank">docker.com/products/docker-desktop</a>
+        → click the button for your chip (Apple Silicon or Intel) → open the downloaded <code>.dmg</code> and drag Docker to Applications.
+      </div>
+
+      <h4>A2 — Install XQuartz (macOS only — needed for Gazebo GUI)</h4>
+      <p>
+        XQuartz lets graphical apps running inside Docker show their windows on your Mac screen.
+        Without it, Gazebo's 3D view will not appear.
+      </p>
+      <div class="code-header">bash — macOS</div>
+<pre><code class="language-bash">brew install --cask xquartz</code></pre>
+      <p>
+        After installation, <strong>log out and log back in</strong> (or restart) so XQuartz becomes
+        the default X11 server. Then open XQuartz from Applications → Utilities, go to
+        <em>Preferences → Security</em>, and check <strong>"Allow connections from network clients"</strong>.
+      </p>
+
+      <h4>A3 — Pull the ROS&nbsp;2 Humble image</h4>
+      <p>This downloads about 2 GB — do it once on a fast connection.</p>
+      <div class="code-header">bash — any terminal</div>
+<pre><code class="language-bash">docker pull osrf/ros:humble-desktop</code></pre>
+
+      <h4>A4 — Start the container (run this every session)</h4>
+      <div class="code-header">bash — macOS</div>
+<pre><code class="language-bash"># Allow Docker to open windows on your screen
+xhost +localhost
+
+# Start the ROS 2 container
+# - your current folder is mounted at /workspace inside the container
+# - GUI windows (Gazebo, RViz) will appear on your Mac screen
+docker run -it --rm \
+    --name ros2_tutorial \
+    -e DISPLAY=host.docker.internal:0 \
+    -e LIBGL_ALWAYS_INDIRECT=0 \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v "$(pwd)":/workspace \
+    -w /workspace \
+    osrf/ros:humble-desktop bash</code></pre>
+      <p>You are now inside a Ubuntu 22.04 shell with ROS&nbsp;2 Humble ready. Your files in the current folder appear at <code>/workspace</code> inside the container.</p>
+
+      <h4>A5 — Inside the container: install MoveIt&nbsp;2 and Franka packages</h4>
+      <p>Run these once inside a fresh container (skip if you already built a custom image).</p>
+      <div class="code-header">bash — inside the Docker container</div>
+<pre><code class="language-bash">source /opt/ros/humble/setup.bash
+
+sudo apt update && sudo apt install -y \
+    ros-humble-moveit \
+    ros-humble-franka-description \
+    ros-humble-franka-msgs \
+    ros-humble-gazebo-ros2-control \
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    python3-rosdep
+
+# Initialize rosdep (skip if already done)
+sudo rosdep init 2>/dev/null || true
+rosdep update
+
+# Clone and build franka_ros2
+mkdir -p /workspace/panda_ws/src && cd /workspace/panda_ws/src
+git clone https://github.com/frankaemika/franka_ros2.git --branch humble
+cd /workspace/panda_ws
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+# Source everything
+source /opt/ros/humble/setup.bash
+source /workspace/panda_ws/install/setup.bash</code></pre>
+
+      <div class="callout callout-tip">
+        <strong>Tip — save your work across sessions:</strong> The container is deleted when you exit (<code>--rm</code> flag).
+        Your code in <code>/workspace</code> is safe because it is mounted from your Mac.
+        Re-run A5 after pulling the image, or build a custom image with <code>docker commit</code> to avoid reinstalling each time.
+      </div>
+
+      <div class="callout callout-warning">
+        <strong>Apple Silicon (M1/M2/M3) Mac — known limitation with RViz and Gazebo GUI:</strong>
+        The official ROS&nbsp;2 Docker image (<code>osrf/ros:humble-desktop</code>) is only built for
+        <strong>x86-64 (amd64)</strong>. On Apple Silicon Macs, Docker Desktop runs it through
+        Rosetta&nbsp;2 emulation inside a virtual machine. That VM has no access to the Mac GPU,
+        so RViz&nbsp;2 and Gazebo cannot create a hardware-accelerated OpenGL window — they crash
+        with a <em>GLXContext</em> error even with XQuartz set up correctly.
+        <br><br>
+        <strong>What still works on Apple Silicon:</strong> All Python code runs correctly inside
+        the container (syntax, imports, ROS&nbsp;2 nodes, MoveIt&nbsp;2 planning). Only the 3D
+        GUI tools (RViz, Gazebo viewer) are blocked.
+        <br><br>
+        <strong>Workarounds:</strong>
+        <ul style="margin:.4rem 0 0 1rem;">
+          <li><strong>UTM or Parallels with Ubuntu 22.04 VM</strong> (recommended) — a native arm64 Ubuntu VM with hardware GPU passthrough can run RViz and Gazebo normally.</li>
+          <li><strong>Intel Mac</strong> — Docker + XQuartz works without this limitation.</li>
+          <li><strong>Remote Ubuntu machine</strong> — run the tutorial on any Ubuntu 22.04 PC and SSH with X11 forwarding (<code>ssh -X user@host</code>).</li>
+        </ul>
+      </div>
+
+      <h4>A6 — Launch the Panda simulation (inside the container)</h4>
+
+      <div class="callout callout-note">
+        <strong>Package name change (franka_ros2 ≥ 2024):</strong>
+        The franka_ros2 Humble branch was refactored to target the newer Franka Research 3 (FR3) robot.
+        The old <code>franka_gazebo</code> and <code>panda_moveit_config</code> packages no longer exist.
+        Use <code>robot_type:=fer</code> to select the classic Panda (FER = Franka Emika Robot) model.
+      </div>
+
+      <div class="code-header">bash — inside the Docker container</div>
+<pre><code class="language-bash">source /opt/ros/humble/setup.bash
+source /workspace/panda_ws/install/setup.bash
+
+# Terminal 1 — start Gazebo with the Panda arm
+# robot_type:=fer selects the classic Panda (Franka Emika Robot)
+ros2 launch franka_gazebo_bringup gazebo_franka_arm_example_controller.launch.py robot_type:=fer
+
+# Open a second terminal in the same container:
+#   docker exec -it ros2_tutorial bash
+# Then in Terminal 2 — start MoveIt 2
+source /opt/ros/humble/setup.bash && source /workspace/panda_ws/install/setup.bash
+ros2 launch franka_fr3_moveit_config move_group.launch.py</code></pre>
+
+      <!-- ── Option B: Ubuntu native ── -->
+      <h3>Option B — Native Ubuntu 22.04</h3>
+      <p>If you are running Ubuntu 22.04 natively or in a VM, follow Steps 1–3 in order.</p>
 
       <div class="callout callout-warning">
         <strong>Warning:</strong> Do not install ROS&nbsp;2 inside a conda or virtual environment.
@@ -709,7 +951,7 @@
         Use the system Python provided by ROS&nbsp;2.
       </div>
 
-      <h3>Step 1 — Install ROS&nbsp;2 Humble</h3>
+      <h3>Step 1 — Install ROS&nbsp;2 Humble <span style="font-weight:400;color:var(--muted)">(Ubuntu native only)</span></h3>
       <div class="code-header">bash</div>
 <pre><code class="language-bash"># Add ROS 2 apt repository
 sudo apt install software-properties-common curl -y
@@ -754,7 +996,10 @@ git clone https://github.com/frankaemika/franka_ros2.git --branch humble
 
 cd ~/panda_ws
 rosdep install --from-paths src --ignore-src -r -y
+# On machines with ≥ 16 GB RAM:
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+# On machines with limited RAM (Docker / low-spec VMs), use single worker to avoid OOM:
+# MAKEFLAGS="-j2" colcon build --symlink-install --parallel-workers 1 --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # Source the workspace
 echo "source ~/panda_ws/install/setup.bash" >> ~/.bashrc
@@ -769,9 +1014,10 @@ source ~/.bashrc</code></pre>
       <h2>1.5 Verifying Your Installation</h2>
 
       <p>
-        Run the script below to confirm that every required package is installed and importable.
-        A passing run prints <code>✓</code> for each check; a failing run prints the exact
-        missing package so you can fix it.
+        Before writing any robot code, it is worth spending two minutes confirming that everything
+        is correctly installed. Run the script below to check every required package. A passing run
+        prints <code>✓</code> for each check; a failing run prints the exact missing package so you
+        know what to fix.
       </p>
 
       <div class="code-header">verify_install.sh</div>
@@ -881,18 +1127,21 @@ if __name__ == '__main__':
       <p>
         You should see two log lines and the process should exit cleanly. If you see
         <code>rclpy not found</code>, your ROS&nbsp;2 environment is not sourced — run
-        <code>source /opt/ros/humble/setup.bash</code> first.
+        <code>source /opt/ros/humble/setup.bash</code> first. Once this test passes, you are
+        ready for Chapter&nbsp;2, where we will explore the mathematics that let the arm know
+        where it is in space.
       </p>
     </section>
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 1 Summary — What you learned:</strong>
+      <strong>Chapter 1 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li>The Franka Panda has <strong>7 rotating joints</strong>, each with a built-in force sensor that measures forces 1,000 times per second — this makes it both precise and safe near people.</li>
-        <li><strong>ROS 2</strong> is a communication framework (not an operating system) that lets separate programs — called nodes — exchange data using Topics (streams), Services (one-shot requests), and Actions (long tasks with progress updates).</li>
-        <li>The <strong>software stack</strong> has clear layers: your Python goal → MoveIt 2 plans a path → ros2_control runs the PID loops → franka_ros2 talks to the hardware → motors move. Each layer speaks in a cleaner language than the one below.</li>
-        <li>Your environment is installed and the Gazebo simulation is verified — you are ready to write control code in Chapter 2.</li>
+        <li>The Franka Panda is a <strong>7-DOF collaborative robot arm with torque sensors at every joint</strong>. Those sensors are what make it safe near people and capable of detecting unexpected contact — not just blindly following position commands like a classical industrial robot.</li>
+        <li>Your code never talks directly to the motors. A <strong>layered software stack</strong> handles each level of abstraction: your Python code sets goals → MoveIt&nbsp;2 plans a collision-free path → ros2_control runs 1&nbsp;kHz PID loops → franka_ros2 sends commands over Ethernet → joints move. Understanding which layer does what is the key to debugging the whole system.</li>
+        <li><strong>ROS&nbsp;2</strong> is the communication backbone connecting every layer: independent programs called <em>nodes</em> exchange data via Topics (continuous streams), Services (single request/reply), and Actions (long tasks with progress updates). Knowing which of the three to use is a core ROS&nbsp;2 skill you will apply in every subsequent chapter.</li>
+        <li>Always <strong>develop in simulation first</strong>. Gazebo is the physics simulator used in Chapters 1–9; Isaac Sim (Chapter&nbsp;10 §10.6) adds photorealistic GPU rendering for AI vision training. Never run untested code on real hardware.</li>
+        <li><strong>Ubuntu 22.04 is the only platform where every chapter works without workarounds.</strong> On macOS (especially Apple Silicon), Docker lets you run Python code and ROS&nbsp;2 nodes, but the Gazebo and RViz 3D GUI cannot render — a hardware OpenGL limitation. The most practical Mac path is a Ubuntu 22.04 VM (UTM/Parallels) or a cloud Ubuntu machine.</li>
       </ul>
     </div>
 
@@ -920,24 +1169,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- ════════════════════════════════════════════════════
-         Key Terms
-         ════════════════════════════════════════════════════ -->
-    <aside class="key-terms">
-      <h3>Key Terms — Chapter 1</h3>
-      <dl>
-        <dt>DOF</dt><dd>Degree of Freedom — one independent axis of motion.</dd>
-        <dt>Revolute joint</dt><dd>A joint that rotates about a single fixed axis.</dd>
-        <dt>Node</dt><dd>An independent ROS&nbsp;2 process that communicates via topics/services/actions.</dd>
-        <dt>Topic</dt><dd>A named, one-directional data stream in ROS&nbsp;2.</dd>
-        <dt>Action</dt><dd>A ROS&nbsp;2 interface for long-running tasks with goal, feedback, and result.</dd>
-        <dt>FCI</dt><dd>Franka Control Interface — the 1&nbsp;kHz Ethernet API for direct robot control.</dd>
-        <dt>libfranka</dt><dd>Franka's official C++ library that wraps the FCI protocol.</dd>
-        <dt>MoveIt&nbsp;2</dt><dd>The ROS&nbsp;2 motion planning framework used throughout this tutorial.</dd>
-        <dt>Torque sensor</dt><dd>Measures the rotational force at a joint; enables compliance and safety reflexes.</dd>
-      </dl>
-    </aside>
 
     <!-- ════════════════════════════════════════════════════
          References

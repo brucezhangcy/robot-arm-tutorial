@@ -72,19 +72,27 @@
       Imagine you move your shoulder and elbow in specific ways — you can predict exactly where your fingertip ends up. Now flip the question: given a point you want to touch, how do you angle your shoulder, elbow, and wrist to get your finger there? Those two questions — <em>joints → tip position</em> and <em>tip position → joints</em> — are exactly what this chapter teaches a robot to answer. Along the way we introduce the mathematical tools that make it possible. The math may look intimidating at first, but every formula has a plain-English meaning explained right next to it.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Kinematics</dt><dd>The study of <em>how</em> something moves, without worrying about the forces involved. For a robot arm: given the joint angles, where does the tip end up?</dd>
-        <dt>Coordinate frame</dt><dd>A set of three perpendicular axes (x, y, z) attached to a specific point — like a tiny 3D compass stuck to each link. All measurements are made relative to some frame.</dd>
-        <dt>Forward kinematics (FK)</dt><dd>Computing the tip's position and orientation from the joint angles. "Forward" = joints → tip. Always has exactly one answer.</dd>
-        <dt>Inverse kinematics (IK)</dt><dd>Computing the joint angles from a desired tip position. "Inverse" = tip position → joints. May have multiple answers (elbow-up vs elbow-down) or no answer (target out of reach).</dd>
-        <dt>DH parameters</dt><dd>Short for "Denavit-Hartenberg parameters" — a standard recipe of four numbers per joint that describes the geometry of a robot arm. We use a table of DH parameters to build the FK formula automatically.</dd>
-        <dt>Jacobian</dt><dd>A mathematical table (matrix) that says "if joint i rotates at speed X, the tip moves at speed Y in each direction." It's the gear ratio for the whole arm at once.</dd>
-        <dt>Singularity</dt><dd>A joint configuration where the arm loses the ability to move in one direction no matter how fast the joints spin. Like trying to steer a bike when the handlebars are completely folded — you're stuck.</dd>
-        <dt>Matrix</dt><dd>A rectangular grid of numbers. We use matrices to represent rotations and movements in a compact form. Multiplying two matrices is like combining two movements into one.</dd>
+    <!-- ════════════════════════════════════
+         Key Terms
+         ════════════════════════════════════ -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 2</h3>
+      <dl>
+        <dt>Kinematics</dt><dd>The study of how something moves, without worrying about the forces involved. For a robot arm: given the joint angles, where does the tip end up?</dd>
+        <dt>Coordinate frame</dt><dd>A set of three perpendicular axes (x, y, z) attached to a specific point. All measurements are made relative to some frame.</dd>
+        <dt>Matrix</dt><dd>A rectangular grid of numbers used to represent rotations and movements compactly. Multiplying two matrices combines two movements into one.</dd>
+        <dt>Homogeneous transform</dt><dd>A \(4\times4\) matrix encoding both rotation and translation.</dd>
+        <dt>DH parameters</dt><dd>Four numbers \((a,d,\alpha,\theta)\) per joint (Denavit-Hartenberg) that define the transform between consecutive joint frames.</dd>
+        <dt>Forward kinematics</dt><dd>The map from joint angles to end-effector pose; always has exactly one answer.</dd>
+        <dt>Inverse kinematics</dt><dd>The map from desired pose to joint angles; may have multiple answers (elbow-up vs elbow-down) or no answer (target out of reach).</dd>
+        <dt>Jacobian</dt><dd>The \(6\times7\) matrix relating joint velocities to end-effector velocities — the gear ratio for the whole arm at once.</dd>
+        <dt>Null space</dt><dd>The set of joint velocities that produce zero end-effector velocity; dimension = 1 for the Panda.</dd>
+        <dt>Singularity</dt><dd>A configuration where the Jacobian loses rank; the arm cannot move in one or more directions no matter how fast the joints spin.</dd>
+        <dt>Workspace</dt><dd>The set of all end-effector positions reachable by the arm.</dd>
+        <dt>Manipulability</dt><dd>A scalar measure of how far the arm is from a singularity; \(\sqrt{\det(JJ^\top)}\).</dd>
+        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver used by MoveIt&nbsp;2 for the Panda.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════
          §2.1  Coordinate Frames
@@ -97,14 +105,16 @@
         mutually perpendicular axes — \(x\), \(y\), \(z\) — attached to a physical point in space.
         Every measurement (a position, a velocity, a force) is only meaningful <em>relative to some
         frame</em>. When you say "the end-effector is 0.5&nbsp;m in front of the robot," the word
-        "in front" implicitly refers to the robot's base frame.
+        "in front" implicitly refers to the robot's base frame. Without coordinate frames, there is
+        no way to assign a number to the arm's position at all.
       </p>
 
       <p>
         For a robot arm, we attach a coordinate frame to each link. The pose (position + orientation)
         of frame \(i\) relative to frame \(i-1\) depends on joint angle \(q_i\). Composing all
         these relative transforms gives the pose of the end-effector in the world frame — this is
-        precisely what forward kinematics computes.
+        precisely what forward kinematics computes. You will see these frames visualized as colored
+        axis tripods in RViz when you run Chapter&nbsp;3's simulation.
       </p>
 
       <h3>2.1.1 Homogeneous Transforms</h3>
@@ -120,6 +130,7 @@
           R \in SO(3),\quad \mathbf{p} \in \mathbb{R}^3
         \]
       </div>
+      <p class="eq-note">Think of this as a combined GPS coordinate (p) + compass reading (R) packed into one 4×4 table. The bottom row is always [0 0 0 1] — it's just bookkeeping.</p>
 
       <p>
         where \(R\) is a \(3\times3\) rotation matrix and \(\mathbf{p}\) is a translation vector.
@@ -132,6 +143,7 @@
           T_{0 \to 2} = T_{0 \to 1} \cdot T_{1 \to 2}
         \]
       </div>
+      <p class="eq-note">Like following turn-by-turn directions: to go from A to C, you follow A→B then B→C. Multiply the two transform matrices to get the combined result.</p>
 
       <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
         <em>In plain English:</em> "The transformation from frame 0 to frame 2 equals the transformation from frame 0 to frame 1, chained with the transformation from frame 1 to frame 2." Think of it like directions: (A→C) = (A→B) then (B→C).
@@ -146,6 +158,7 @@
           T_{\text{EEF}} = T_1(q_1)\, T_2(q_2)\, T_3(q_3)\, T_4(q_4)\, T_5(q_5)\, T_6(q_6)\, T_7(q_7)
         \]
       </div>
+      <p class="eq-note">Chain all seven joint transforms together. Each T depends only on that joint's angle, so as the arm moves, only the relevant T changes.</p>
 
       <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
         <em>In plain English:</em> Chain all 7 joint transforms together (multiply the matrices left to right), one per joint, and the result tells you exactly where the gripper is and which way it's pointing. Each T<sub>i</sub>(q<sub>i</sub>) depends only on that joint's current angle.
@@ -189,7 +202,9 @@
 
       <p>
         For a revolute joint, \(a_i\), \(\alpha_i\), and \(d_i\) are fixed constants of the
-        mechanism's geometry; only \(\theta_i = q_i\) changes as the joint moves.
+        mechanism's geometry; only \(\theta_i = q_i\) changes as the joint moves. In other words,
+        you can fully describe the Panda's entire geometry using 7 rows of 4 numbers. That table
+        is in <a href="appendix.html#dh-table">Appendix&nbsp;B</a>.
         Figure&nbsp;2.1 illustrates the four steps for a single joint.
       </p>
 
@@ -349,6 +364,7 @@
           \end{bmatrix}
         \]
       </div>
+      <p class="eq-note">You do not need to memorise this. MoveIt 2 computes it for you from the DH table. The key point: four numbers (a, d, α, θ) per joint fully describe how that link transforms 3D space.</p>
 
       <h3>2.2.1 Panda DH Parameters</h3>
       <p>
@@ -388,8 +404,9 @@
         <strong>Forward kinematics</strong> (FK) is the function
         \(f: \mathbb{R}^7 \to SE(3)\) that maps a vector of joint angles
         \(\mathbf{q} = [q_1, \ldots, q_7]^\top\) to the end-effector pose
-        \(T_{\text{EEF}} \in SE(3)\).
-        It is always unique — one joint configuration produces exactly one end-effector pose.
+        \(T_{\text{EEF}} \in SE(3)\) — the position and orientation of the gripper in the base frame.
+        This is always unique: one joint configuration produces exactly one end-effector pose, no
+        matter how complex the arm's shape.
       </p>
 
       <div class="math-block">
@@ -561,8 +578,9 @@
       <p>
         <strong>Inverse kinematics</strong> (IK) is the reverse problem: given a desired end-effector
         pose \(T_{\text{des}}\), find joint angles \(\mathbf{q}\) such that
-        \(T_{\text{EEF}}(\mathbf{q}) = T_{\text{des}}\). This is significantly harder than FK for
-        three reasons:
+        \(T_{\text{EEF}}(\mathbf{q}) = T_{\text{des}}\). This is the question MoveIt&nbsp;2 answers
+        every time you specify a Cartesian target in Chapter&nbsp;5. It is significantly harder than
+        FK for three reasons:
       </p>
 
       <ul>
@@ -653,6 +671,7 @@
           = J(\mathbf{q})\, \dot{\mathbf{q}}
         \]
       </div>
+      <p class="eq-note">The Jacobian J is a conversion table: multiply it by how fast the joints are spinning (q̇) and you get how fast the gripper is moving (v). J changes shape as the arm moves.</p>
 
       <p class="text-muted" style="font-size:.88rem; color:#666; margin-top:-.5rem;">
         <em>In plain English:</em> "Gripper velocity = Jacobian × joint speeds." The left side v is a 6-number list: the first 3 numbers are how fast the gripper moves in the x, y, z directions (in m/s), and the last 3 are how fast it rotates about those axes (in rad/s). The right side multiplies the Jacobian (a 6×7 table that changes with joint angles) by the 7 joint angular speeds. If you want the gripper to move at a specific velocity, rearrange the equation to find the joint speeds that produce it.
@@ -665,7 +684,8 @@
       </p>
 
       <p>
-        The Jacobian is central to three important applications:
+        The Jacobian is central to three important applications you will encounter later in this
+        tutorial:
       </p>
       <ol>
         <li>
@@ -679,7 +699,8 @@
         </li>
         <li>
           <strong>Singularity detection</strong> — the arm is at a singularity when
-          \(\text{rank}(J) < 6\), i.e., when the Jacobian loses rank.
+          \(\text{rank}(J) < 6\), i.e., when the Jacobian loses rank and motion becomes impossible
+          in one direction.
         </li>
       </ol>
 
@@ -764,8 +785,10 @@
       <p>
         The <strong>workspace</strong> is the set of all end-effector positions reachable by the arm.
         For the Panda, it is approximately a sphere of radius 855&nbsp;mm centered at the base, with a
-        dead zone near the base where the arm cannot reach itself.
-        Figure&nbsp;2.4 shows the cross-sectional envelope.
+        dead zone near the base where the arm cannot reach itself. Knowing the workspace boundaries
+        matters in practice: if you specify a Cartesian target that falls outside the workspace,
+        MoveIt&nbsp;2 will return a planning failure, not an error message about the position being
+        "too far." Figure&nbsp;2.4 shows the cross-sectional envelope.
       </p>
 
       <!-- ── Figure 2.4: Workspace Envelope ── -->
@@ -819,12 +842,11 @@
 
               <!-- Inner dead zone circle -->
               <circle cx="120" cy="155" r="32" fill="#fafbfc" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
-              <text x="120" y="158" text-anchor="middle" fill="#999" font-size="9">dead</text>
-              <text x="120" y="169" text-anchor="middle" fill="#999" font-size="9">zone</text>
+              <text x="116" y="159" text-anchor="end" fill="#999" font-size="9">dead zone</text>
 
               <!-- Base dot -->
               <circle cx="120" cy="155" r="5" fill="#333"/>
-              <text x="128" y="159" fill="#555" font-size="9">Base</text>
+              <text x="127" y="159" text-anchor="start" fill="#555" font-size="9">Base</text>
 
               <!-- radius annotation -->
               <line x1="120" y1="155" x2="233" y2="125" stroke="#c0392b" stroke-width="1.2" stroke-dasharray="3,2"/>
@@ -835,7 +857,7 @@
               <text x="247" y="158" fill="#27ae60" font-size="10">X</text>
               <!-- Y axis -->
               <line x1="120" y1="15" x2="120" y2="280" stroke="#3498db" stroke-width="1" stroke-dasharray="3,2"/>
-              <text x="124" y="14" fill="#3498db" font-size="10">Y</text>
+              <text x="109" y="30" text-anchor="end" fill="#3498db" font-size="10">Y</text>
             </g>
 
             <defs>
@@ -859,10 +881,42 @@
 
       <h3>2.6.2 Singularities</h3>
       <p>
-        A <strong>singularity</strong> is a joint configuration where the Jacobian loses rank —
-        meaning the arm loses the ability to move in one or more Cartesian directions, no matter
-        how fast the joints spin. Mathematically, this occurs when \(\det(J J^\top) = 0\).
-        Figure&nbsp;2.5 illustrates the two most common singularity types for the Panda.
+        A <strong>singularity</strong> is a joint configuration where the arm gets mathematically "stuck" —
+        not physically jammed, but unable to move the gripper in one particular direction
+        <em>no matter how fast the joints spin</em>.
+      </p>
+
+      <div class="callout callout-analogy">
+        <strong>Analogy — pushing a door along its hinge:</strong>
+        Imagine trying to open a door by pushing <em>parallel to the hinge rod</em> (along the axis the hinge rotates around).
+        No matter how hard you push, the door won't budge — you're pushing in exactly the wrong direction for that mechanism.
+        A singularity is the same idea: the arm's geometry temporarily aligns so that one specific gripper motion becomes impossible.
+        The arm is not broken. Repositioning a joint by even a few degrees restores full motion.
+      </div>
+
+      <p>
+        Mathematically this happens when \(\det(J J^\top) = 0\) — the Jacobian "loses rank."
+        The two most common singularity types for the Panda are:
+      </p>
+      <ul>
+        <li>
+          <strong>Wrist singularity:</strong> Joints J5, J6, and J7 all point their rotation axes in the same direction (they "stack up").
+          Rotating the gripper about one axis would now require J6 to spin infinitely fast.
+          In practice the arm <em>loses the ability to rotate the end-effector about its own z-axis</em>.
+        </li>
+        <li>
+          <strong>Shoulder singularity:</strong> The arm is fully extended straight up (or straight out).
+          J1 and J2's axes become perfectly parallel, so moving the gripper <em>sideways</em> (radially outward) requires both joints to spin in opposite directions at enormous speed — effectively impossible.
+          The arm <em>loses the ability to translate the end-effector radially</em> (directly away from the base).
+        </li>
+      </ul>
+      <p>
+        In practice, near a singularity the Jacobian pseudoinverse produces massive joint velocity commands.
+        The Panda's safety reflexes detect the spike and trigger a protective stop — the arm freezes suddenly.
+        MoveIt&nbsp;2 routes planned paths around singularities automatically.
+        The damped least-squares method covered in Chapter&nbsp;6 keeps velocity commands bounded when
+        working near (but not at) a singularity during real-time control.
+        Figure&nbsp;2.5 illustrates both types.
       </p>
 
       <!-- ── Figure 2.5: Singularities ── -->
@@ -875,7 +929,7 @@
             <!-- ── Left: Wrist singularity ── -->
             <g transform="translate(30, 20)">
               <text x="120" y="18" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="12">Wrist Singularity</text>
-              <text x="120" y="33" text-anchor="middle" fill="#888" font-size="10">Joints 5, 6, 7 aligned</text>
+              <text x="120" y="31" text-anchor="middle" fill="#888" font-size="9">J5, J6, J7 axes aligned</text>
 
               <!-- Base -->
               <rect x="90" y="275" width="60" height="14" rx="2" fill="#bbb"/>
@@ -884,10 +938,10 @@
               <line x1="120" y1="275" x2="120" y2="215" stroke="#c8d0dc" stroke-width="16" stroke-linecap="round"/>
               <line x1="120" y1="215" x2="85"  y2="160" stroke="#c8d0dc" stroke-width="14" stroke-linecap="round"/>
               <line x1="85"  y1="160" x2="120" y2="105" stroke="#c8d0dc" stroke-width="13" stroke-linecap="round"/>
-              <line x1="120" y1="105" x2="155" y2="70"  stroke="#c8d0dc" stroke-width="12" stroke-linecap="round"/>
+              <line x1="120" y1="105" x2="155" y2="88"  stroke="#c8d0dc" stroke-width="12" stroke-linecap="round"/>
               <!-- Wrist: J5, J6, J7 all on the same axis (aligned) -->
-              <line x1="155" y1="70" x2="155" y2="50"  stroke="#c8d0dc" stroke-width="10" stroke-linecap="round"/>
-              <line x1="155" y1="50" x2="155" y2="35"  stroke="#c8d0dc" stroke-width="8"  stroke-linecap="round"/>
+              <line x1="155" y1="88" x2="155" y2="68"  stroke="#c8d0dc" stroke-width="10" stroke-linecap="round"/>
+              <line x1="155" y1="68" x2="155" y2="52"  stroke="#c8d0dc" stroke-width="8"  stroke-linecap="round"/>
 
               <!-- Joint circles -->
               <circle cx="120" cy="215" r="12" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
@@ -896,17 +950,17 @@
               <text x="85" y="164" text-anchor="middle" fill="white" font-size="9" font-weight="700">J2</text>
               <circle cx="120" cy="105" r="10" fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
               <text x="120" y="109" text-anchor="middle" fill="white" font-size="9" font-weight="700">J3</text>
-              <circle cx="155" cy="70" r="9" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
-              <text x="155" y="74" text-anchor="middle" fill="white" font-size="9" font-weight="700">J5</text>
-              <circle cx="155" cy="50" r="8" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
-              <text x="155" y="54" text-anchor="middle" fill="white" font-size="9" font-weight="700">J6</text>
-              <circle cx="155" cy="35" r="7" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
-              <text x="155" y="39" text-anchor="middle" fill="white" font-size="9" font-weight="700">J7</text>
+              <circle cx="155" cy="88" r="9" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="92" text-anchor="middle" fill="white" font-size="9" font-weight="700">J5</text>
+              <circle cx="155" cy="68" r="8" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="72" text-anchor="middle" fill="white" font-size="9" font-weight="700">J6</text>
+              <circle cx="155" cy="52" r="7" fill="#c0392b" stroke="#922b21" stroke-width="2"/>
+              <text x="155" y="56" text-anchor="middle" fill="white" font-size="9" font-weight="700">J7</text>
 
               <!-- Alignment arrow -->
-              <line x1="170" y1="35" x2="170" y2="70" stroke="#c0392b" stroke-width="2" stroke-dasharray="3,2"/>
-              <text x="175" y="55" fill="#c0392b" font-size="9" font-weight="600">z-axes</text>
-              <text x="175" y="66" fill="#c0392b" font-size="9" font-weight="600">aligned!</text>
+              <line x1="170" y1="52" x2="170" y2="88" stroke="#c0392b" stroke-width="2" stroke-dasharray="3,2"/>
+              <text x="175" y="68" fill="#c0392b" font-size="9" font-weight="600">z-axes</text>
+              <text x="175" y="79" fill="#c0392b" font-size="9" font-weight="600">aligned!</text>
 
               <!-- Lost DOF annotation -->
               <rect x="5" y="85" width="72" height="44" rx="3" fill="#fdf3f2" stroke="#e74c3c" stroke-width="1"/>
@@ -921,7 +975,6 @@
             <!-- ── Right: Shoulder singularity ── -->
             <g transform="translate(300, 20)">
               <text x="130" y="18" text-anchor="middle" fill="#c0392b" font-weight="700" font-size="12">Shoulder Singularity</text>
-              <text x="130" y="33" text-anchor="middle" fill="#888" font-size="10">Arm fully extended</text>
 
               <!-- Base -->
               <rect x="100" y="275" width="60" height="14" rx="2" fill="#bbb"/>
@@ -945,8 +998,9 @@
               <text x="130" y="74" text-anchor="middle" fill="white" font-size="9" font-weight="700">J4</text>
               <circle cx="130" cy="42"  r="8"  fill="#0057b8" stroke="#003d82" stroke-width="1.5"/>
               <text x="130" y="46" text-anchor="middle" fill="white" font-size="9" font-weight="700">J5</text>
-              <rect x="118" y="2" width="24" height="12" rx="2" fill="#f39c12"/>
-              <text x="130" y="11" text-anchor="middle" fill="white" font-size="8">EEF</text>
+              <line x1="135" y1="25" x2="196" y2="34" stroke="#f39c12" stroke-width="1" stroke-dasharray="2,2"/>
+              <rect x="196" y="27" width="28" height="13" rx="2" fill="#f39c12"/>
+              <text x="210" y="37" text-anchor="middle" fill="white" font-size="8" font-weight="700">EEF</text>
 
               <!-- Alignment annotation -->
               <line x1="155" y1="220" x2="155" y2="165" stroke="#c0392b" stroke-width="2" stroke-dasharray="3,2"/>
@@ -954,11 +1008,12 @@
               <text x="160" y="208" fill="#c0392b" font-size="9" font-weight="600">aligned!</text>
 
               <!-- Lost DOF annotation -->
-              <rect x="8" y="130" width="80" height="58" rx="3" fill="#fdf3f2" stroke="#e74c3c" stroke-width="1"/>
-              <text x="48" y="147" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="600">Loses 1 DOF</text>
-              <text x="48" y="160" text-anchor="middle" fill="#888" font-size="9">cannot move EEF</text>
-              <text x="48" y="171" text-anchor="middle" fill="#888" font-size="9">horizontally</text>
-              <text x="48" y="182" text-anchor="middle" fill="#888" font-size="9">without J1,J2 racing</text>
+              <rect x="5" y="130" width="88" height="70" rx="3" fill="#fdf3f2" stroke="#e74c3c" stroke-width="1"/>
+              <text x="49" y="147" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="600">Loses 1 DOF</text>
+              <text x="49" y="160" text-anchor="middle" fill="#888" font-size="9">EEF can't move</text>
+              <text x="49" y="172" text-anchor="middle" fill="#888" font-size="9">sideways without</text>
+              <text x="49" y="184" text-anchor="middle" fill="#888" font-size="9">J1+J2 both</text>
+              <text x="49" y="194" text-anchor="middle" fill="#888" font-size="9">spinning fast</text>
             </g>
           </svg>
         </div>
@@ -973,10 +1028,9 @@
       </figure>
 
       <div class="callout callout-warning">
-        <strong>Warning:</strong> Commanding a robot through a singularity causes joint velocities
-        to spike toward infinity in theory. In practice, the Panda's reflex system will trigger a
-        protective stop. Always check that planned trajectories avoid singular configurations —
-        MoveIt&nbsp;2's planners do this by default.
+        <strong>Warning — never command through a singularity:</strong> Joint velocity commands spike toward infinity.
+        The Panda's safety reflexes detect this and freeze the arm (protective stop).
+        MoveIt&nbsp;2 avoids singularities in planned trajectories by default; damped least-squares (Chapter&nbsp;6) handles near-singularities in real-time velocity control.
       </div>
     </section>
 
@@ -1228,13 +1282,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 2 Summary — What you learned:</strong>
+      <strong>Chapter 2 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>Coordinate frames</strong> are the x/y/z axes attached to each robot link — every position measurement only makes sense relative to a frame.</li>
-        <li><strong>DH parameters</strong> give us a 4-number recipe per joint to describe how the geometry steps from one link's frame to the next; for the Panda's 7 joints, this produces a 7-row table.</li>
-        <li><strong>Forward kinematics</strong> (FK) is straightforward: multiply 7 DH matrices to get the gripper's exact position and orientation from any set of joint angles.</li>
-        <li><strong>Inverse kinematics</strong> (IK) goes the other direction — given a desired gripper pose, find the joint angles that achieve it. Multiple solutions may exist; MoveIt 2 picks the closest one to the current configuration.</li>
-        <li>The <strong>Jacobian</strong> is the 6×7 "gear ratio" matrix that converts joint speeds into gripper speed; it is also the first tool for detecting singularities (configurations where the arm loses the ability to move in one direction).</li>
+        <li>Programming a robot arm means constantly translating between two "languages": <strong>joint space</strong> (the 7 angles the motors actually turn) and <strong>Cartesian space</strong> (the 3D position and orientation of the gripper you can see). Forward Kinematics and Inverse Kinematics are the two directions of that translation — they are the mathematical core of everything that follows.</li>
+        <li><strong>Forward Kinematics (FK)</strong>: given any set of joint angles, multiply the 7 DH transform matrices together and you get the gripper's exact 3D pose. One input → one answer. This is always solvable.</li>
+        <li><strong>Inverse Kinematics (IK)</strong>: given a desired gripper pose, find the joint angles that reach it. This is harder — multiple solutions usually exist, some poses are unreachable, and MoveIt&nbsp;2's solver (TRAC-IK) picks the solution closest to the current configuration to avoid sudden jumps.</li>
+        <li>The <strong>Jacobian</strong> is a 6×7 matrix that acts as a "gear ratio" between joint velocities and gripper velocity. Chapter&nbsp;6 uses it directly for real-time velocity control; detecting where it becomes singular reveals configurations where the arm loses freedom to move — critical for both safety and planning.</li>
       </ul>
     </div>
 
@@ -1266,23 +1319,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h3>Key Terms — Chapter 2</h3>
-      <dl>
-        <dt>Homogeneous transform</dt><dd>A \(4\times4\) matrix encoding both rotation and translation.</dd>
-        <dt>DH parameters</dt><dd>Four numbers \((a,d,\alpha,\theta)\) that define the transform between consecutive joint frames.</dd>
-        <dt>Forward kinematics</dt><dd>The map from joint angles to end-effector pose; always unique.</dd>
-        <dt>Inverse kinematics</dt><dd>The map from desired pose to joint angles; may have multiple, zero, or infinite solutions.</dd>
-        <dt>Jacobian</dt><dd>The \(6\times7\) matrix relating joint velocities to end-effector velocities.</dd>
-        <dt>Null space</dt><dd>The set of joint velocities that produce zero end-effector velocity; dimension = 1 for the Panda.</dd>
-        <dt>Singularity</dt><dd>A configuration where the Jacobian loses rank; the arm cannot move in certain directions.</dd>
-        <dt>Workspace</dt><dd>The set of all end-effector positions reachable by the arm.</dd>
-        <dt>Manipulability</dt><dd>A scalar measure of how far the arm is from a singularity; \(\sqrt{\det(JJ^\top)}\).</dd>
-        <dt>TRAC-IK</dt><dd>The default inverse kinematics solver used by MoveIt&nbsp;2 for the Panda.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

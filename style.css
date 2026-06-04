@@ -333,9 +333,32 @@ p code, li code {
   border: none;
 }
 
-.key-terms dl { display: grid; grid-template-columns: auto 1fr; gap: .35rem 1rem; }
-.key-terms dt { font-weight: 600; font-size: .88rem; }
-.key-terms dd { font-size: .88rem; color: #444; }
+.key-terms dl { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1rem; align-items: start; }
+.key-terms dt {
+  font-weight: 700;
+  font-size: .8rem;
+  color: var(--accent-dk);
+  background: var(--accent-lt);
+  padding: .15em .5em;
+  border-radius: 3px;
+  white-space: nowrap;
+  align-self: start;
+}
+.key-terms dd { font-size: .88rem; color: #444; margin: 0; }
+
+/* vocab cards inside callout-note boxes */
+.callout-note dl { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1rem; align-items: start; margin-top: .5rem; }
+.callout-note dl dt {
+  font-weight: 700;
+  font-size: .8rem;
+  color: var(--accent-dk);
+  background: var(--accent-lt);
+  padding: .15em .5em;
+  border-radius: 3px;
+  white-space: nowrap;
+  align-self: start;
+}
+.callout-note dl dd { font-size: .88rem; color: #444; margin: 0; }
 
 /* ----- Warning / Safety Callout ----- */
 .callout {
@@ -379,6 +402,16 @@ p code, li code {
 }
 
 .callout-analogy strong { color: #c2410c; }
+
+/* plain-English equation annotation */
+.eq-note {
+  font-style: italic;
+  color: var(--muted);
+  font-size: .88rem;
+  margin: -.4rem 0 1rem 1rem;
+  padding-left: .75rem;
+  border-left: 3px solid var(--border);
+}
 
 /* ----- Tables ----- */
 table {

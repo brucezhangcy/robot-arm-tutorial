@@ -71,19 +71,25 @@
       Chapters 4–6 told the arm <em>where</em> to go. Impedance control answers a different question: <em>what happens when something pushes the arm?</em> Should it rigidly resist the push? Completely give way? Or spring back gently? You get to choose — by programming the arm's virtual "springiness." This is what allows a robot to work safely next to people: if a human bumps into it, the arm yields instead of pushing back with full motor force.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Torque (reminder)</dt><dd>A rotational force — the turning force you apply to a wrench. For a robot joint, torque is what the motor actually outputs. Measured in Newton-meters (N·m).</dd>
-        <dt>Impedance</dt><dd>In robotics: how much the arm resists being pushed off its target position. High impedance = stiff and rigid. Low impedance = compliant and yielding.</dd>
-        <dt>Stiffness (K<sub>p</sub>)</dt><dd>How hard the arm pushes back when displaced. High stiffness means a small displacement causes a large restoring force — like a stiff spring.</dd>
-        <dt>Damping (K<sub>d</sub>)</dt><dd>How quickly the arm settles after a disturbance, without oscillating. Like shock absorbers in a car — they don't make the car stiff, they just stop it from bouncing.</dd>
-        <dt>Compliance</dt><dd>The opposite of stiffness. A "compliant" arm gives way when pushed — useful for working near people or when the arm might accidentally contact an object.</dd>
-        <dt>Mass-spring-damper</dt><dd>A standard mechanical model: a mass (M) attached to a spring (stiffness K) and a shock absorber (damping B). Impedance control makes the robot arm behave as if it were this mechanical system.</dd>
-        <dt>Critical damping</dt><dd>The exact damping value where the arm returns to its target position as fast as possible without overshooting or oscillating. The ideal "feel" for most applications.</dd>
-        <dt>Feed-forward</dt><dd>A control term that compensates for known, predictable forces (like gravity) before they even cause an error, rather than waiting for an error to appear and then correcting it.</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 7</h3>
+      <dl>
+        <dt>Torque</dt><dd>A rotational force — the turning force a motor outputs at a joint. Measured in Newton-meters (N·m).</dd>
+        <dt>Impedance</dt><dd>How much the arm resists being pushed off its target position; high impedance = stiff and rigid, low impedance = compliant and yielding.</dd>
+        <dt>Impedance control</dt><dd>A control strategy that programs the dynamic relationship between external force and end-effector motion, making the robot behave like a virtual mechanical system.</dd>
+        <dt>Stiffness (Kp)</dt><dd>The spring-like restoring force per unit displacement; high stiffness resists deflection, low stiffness yields to contact.</dd>
+        <dt>Damping (Kd)</dt><dd>The velocity-dependent resistance that prevents oscillation; critical damping gives the fastest non-oscillatory response.</dd>
+        <dt>Compliance</dt><dd>The opposite of stiffness; a compliant arm gives way when pushed, useful for working near people or when accidental contact may occur.</dd>
+        <dt>Mass-spring-damper</dt><dd>A standard mechanical model (mass M, spring stiffness K, shock-absorber damping B) that impedance control makes the arm emulate.</dd>
+        <dt>Critical damping</dt><dd>The condition \(K_d = 2\sqrt{MK_p}\) at which the system returns to equilibrium as quickly as possible without overshooting.</dd>
+        <dt>Wrench</dt><dd>A 6-vector combining a 3D force and a 3D torque — the complete description of the mechanical action on a rigid body.</dd>
+        <dt>Jacobian transpose (J^T)</dt><dd>Maps a Cartesian wrench applied at the end-effector to the equivalent joint torques; used in Cartesian impedance control.</dd>
+        <dt>Feed-forward torque</dt><dd>The gravity and friction compensation torque computed from the robot's dynamic model so the arm stays at its target pose without position error.</dd>
+        <dt>CartesianImpedanceController</dt><dd>The franka_ros2 controller that implements Cartesian-space impedance control with separate stiffness values for each of the 6 Cartesian DOF.</dd>
+        <dt>Null-space stiffness</dt><dd>A restoring torque in the redundant null space of the Jacobian that controls elbow configuration independently of end-effector pose.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §7.1  What Is Impedance Control?
@@ -92,19 +98,22 @@
       <h2>7.1 What Is Impedance Control?</h2>
 
       <p>
-        Pure position control drives joint angles to a target; it fights any external force
-        that opposes the motion. Pure force control maintains a target contact force; it
+        The position control you used in Chapters&nbsp;4–5 drives joint angles to a target and
+        fights any external force that opposes the motion — like a rigid robotic arm from a
+        factory. Pure force control, at the other extreme, maintains a target contact force but
         ignores where the end-effector ends up. <strong>Impedance control</strong> is a
         middle ground: it controls the dynamic <em>relationship</em> between force and
-        motion <a class="cite" href="#ref1">[1]</a>.
+        motion <a class="cite" href="#ref1">[1]</a>. Think of it as programming the arm's
+        "give."
       </p>
 
       <p>
         The intuition is a <strong>virtual spring</strong>. Imagine a spring connecting the
         desired pose to the actual pose of the end-effector. When the environment pushes the
         arm away from its goal, the spring pulls it back — harder if the spring is stiff,
-        more gently if the spring is soft. You choose the spring stiffness \(K_p\) and the
-        damping \(K_d\) to set the compliance of the arm:
+        more gently if the spring is soft. The beauty of this approach is that you can change
+        the spring stiffness in software at any moment. You choose the spring stiffness \(K_p\)
+        and the damping \(K_d\) to set the compliance of the arm:
       </p>
 
       <table>
@@ -129,10 +138,12 @@
       </table>
 
       <p>
-        Because torque is commanded directly to the motors, impedance control requires
-        access to the torque interface — available on the real Panda hardware and in
-        the Gazebo simulation through <code>franka_ros2</code>'s
-        <code>CartesianImpedanceController</code>.
+        Because torque is commanded directly to the motors, impedance control requires access
+        to the torque interface — available on the real Panda hardware (which you recall has
+        a torque sensor at every joint, as described in Chapter&nbsp;1) and in the Gazebo
+        simulation through <code>franka_ros2</code>'s <code>CartesianImpedanceController</code>.
+        Switching to this controller follows the same lifecycle pattern described in
+        Chapter&nbsp;3's controller manager section.
       </p>
     </section>
 
@@ -158,6 +169,7 @@
           M\ddot{x} + B\dot{x} + K x = F_{\mathrm{ext}}
         \]
       </div>
+      <p class="eq-note">M = mass (how sluggish the system is), B = damping (how fast oscillations die), K = stiffness (how hard the spring pulls back). Adjust these three numbers to change how the arm feels when you push it.</p>
 
       <p>
         Here \(x\) is the displacement from the equilibrium position,
@@ -252,11 +264,13 @@
           Z(s) = M s^2 + B s + K
         \]
       </div>
+      <p class="eq-note">Impedance measures "how hard is it to push this thing?" High impedance (large M, B, K) = rigid and hard to deflect. Low impedance = compliant and easy to push aside.</p>
 
       <p>
-        A high-impedance system (large \(M\), \(B\), \(K\)) is hard to deflect.
-        A low-impedance system yields easily. Impedance control lets you set \(K\) and
-        \(B\) in software — effectively re-programming the compliance of the robot arm.
+        A high-impedance system (large \(M\), \(B\), \(K\)) is hard to deflect — the arm pushes
+        back firmly. A low-impedance system yields easily — the arm feels almost weightless when
+        you guide it by hand. Impedance control lets you set \(K\) and \(B\) in software,
+        effectively reprogramming the arm's mechanical personality without touching any hardware.
       </p>
     </section>
 
@@ -279,6 +293,7 @@
             + \boldsymbol{\tau}_{\mathrm{ff}}
         \]
       </div>
+      <p class="eq-note">The arm acts like a spring anchored at q_d: displace it and it pushes back. Kp controls spring stiffness; Kd controls how quickly the oscillation dies. τ_ff cancels gravity so the arm holds position without effort.</p>
 
       <p>
         where \(\mathbf{q}_d\) is the desired joint angle vector, \(\mathbf{q}\) is the
@@ -300,6 +315,7 @@
             + K_d\,(\dot{\mathbf{x}}_d - \dot{\mathbf{x}})
         \]
       </div>
+      <p class="eq-note">Same spring idea, now in Cartesian space: push the gripper away from x_d and it resists with a force proportional to the distance. Useful for compliant assembly tasks.</p>
 
       <p>
         This Cartesian wrench is then mapped to joint torques via the transpose Jacobian:
@@ -310,6 +326,7 @@
           \boldsymbol{\tau} = J(q)^{\top} \mathbf{F}_{\mathrm{cmd}} + \boldsymbol{\tau}_{\mathrm{ff}}
         \]
       </div>
+      <p class="eq-note">Jᵀ converts the desired Cartesian pushing force into the joint torques that produce it. τ_ff compensates for gravity so the arm does not sag under its own weight.</p>
 
       <!-- ── Figure 7.2: impedance control block diagram ── -->
       <figure id="fig7-2">
@@ -525,6 +542,8 @@
         broadcaster using the following YAML configuration:
       </p>
 
+      <p>Add the following block to the same controller YAML file used in Chapter 6 (<code>ros2_controllers.yaml</code>).</p>
+      <div class="code-header">ros2_controllers.yaml — add this block</div>
       <pre><code class="language-yaml">cartesian_impedance_controller:
   ros__parameters:
     arm_id: panda
@@ -544,9 +563,10 @@
     damping_ratio: 1.0</code></pre>
 
       <p>
-        Load the controller, then switch from the trajectory controller:
+        Load the controller, then switch from the trajectory controller. Run these commands in a terminal while the simulation is already running:
       </p>
 
+      <div class="code-header">bash — terminal with simulation running</div>
       <pre><code class="language-bash">ros2 run controller_manager spawner cartesian_impedance_controller --inactive
 
 ros2 control switch_controllers \
@@ -568,6 +588,7 @@ ros2 control switch_controllers \
         be updated at any time without restarting the controller:
       </p>
 
+      <div class="code-header">bash — update stiffness at runtime (terminal with sim running)</div>
       <pre><code class="language-bash"># Set translational stiffness to 500 N/m on all axes
 ros2 param set /cartesian_impedance_controller \
     cartesian_stiffness_translation "[500.0, 500.0, 500.0]"</code></pre>
@@ -752,12 +773,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 7 Summary — What you learned:</strong>
+      <strong>Chapter 7 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>Impedance control</strong> sits between pure position control (rigid) and pure force control (passive). It lets you program how "springy" the arm feels: stiff for precision, compliant for safe human contact.</li>
-        <li>The <strong>mass–spring–damper model</strong> (M·ẍ + B·ẋ + K·x = F<sub>ext</sub>) is the target behavior. The controller computes torques that make the real arm behave <em>as if</em> it were this mechanical system.</li>
-        <li><strong>Stiffness K<sub>p</sub></strong> determines how hard the arm resists being pushed off its target pose. <strong>Damping K<sub>d</sub></strong> prevents oscillation — tune to K<sub>d</sub> ≈ 2√(M·K<sub>p</sub>) for a critically damped response.</li>
-        <li>This requires the <strong>torque interface</strong> — not available from the JointTrajectoryController, but available on real Panda hardware and through franka_ros2's CartesianImpedanceController in Gazebo.</li>
+        <li><strong>Impedance control gives the arm a programmable "feel."</strong> Instead of commanding exact positions, you define stiffness (K<sub>p</sub>) and damping (K<sub>d</sub>), and the controller computes torques that make the arm behave like a spring-damper system. A purely position-controlled arm would snap a human's hand or break a fragile part by ignoring contact; an impedance-controlled arm deflects gracefully. This is what makes safe human–robot collaboration possible.</li>
+        <li>The design target is the <strong>mass–spring–damper equation</strong> M·ẍ + B·ẋ + K·x = F<sub>ext</sub>. The arm doesn't physically change — but the controller computes torques that make it <em>respond as if</em> it were a spring with stiffness K and damper with coefficient B. You tune those numbers to trade off precision against compliance.</li>
+        <li>Tuning rule: set <strong>K<sub>d</sub> ≈ 2√(M·K<sub>p</sub>)</strong> for a critically damped response — the arm settles quickly without oscillating. Too little K<sub>d</sub> and the arm bounces; too much and it responds sluggishly to disturbances.</li>
+        <li>Impedance control requires the <strong>torque interface</strong> — not the position interface used in Chapters 4–5. On real Panda hardware this is available through franka_ros2's CartesianImpedanceController. This is a harder interface to use safely: a wrong torque command can cause sudden, large joint motion.</li>
       </ul>
     </div>
 
@@ -789,40 +810,6 @@ if __name__ == '__main__':
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h2>Key Terms</h2>
-      <dl>
-        <dt>Impedance control</dt>
-        <dd>A control strategy that programs the dynamic relationship between external force
-            and end-effector motion, making the robot behave like a virtual mechanical system.</dd>
-        <dt>Stiffness (Kp)</dt>
-        <dd>The spring-like restoring force per unit displacement; high stiffness resists
-            deflection, low stiffness yields to contact.</dd>
-        <dt>Damping (Kd)</dt>
-        <dd>The velocity-dependent resistance that prevents oscillation; critical damping gives
-            the fastest non-oscillatory response.</dd>
-        <dt>Critical damping</dt>
-        <dd>The condition \(K_d = 2\sqrt{MK_p}\) at which the system returns to equilibrium
-            as quickly as possible without overshooting.</dd>
-        <dt>Wrench</dt>
-        <dd>A 6-vector combining a 3D force and a 3D torque — the complete description of the
-            mechanical action on a rigid body.</dd>
-        <dt>Jacobian transpose (J^T)</dt>
-        <dd>Maps a Cartesian wrench applied at the end-effector to the equivalent joint torques;
-            used in Cartesian impedance control.</dd>
-        <dt>Feed-forward torque (tau_ff)</dt>
-        <dd>The gravity and friction compensation torque computed from the robot's dynamic model
-            so the arm remains at its target pose without position error.</dd>
-        <dt>CartesianImpedanceController</dt>
-        <dd>The franka_ros2 controller that implements Cartesian-space impedance control with
-            separate stiffness values for each of the 6 Cartesian DOF.</dd>
-        <dt>Null-space stiffness</dt>
-        <dd>A restoring torque in the redundant null space of the Jacobian that controls the
-            elbow configuration independently of the end-effector pose.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

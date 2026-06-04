@@ -59,36 +59,51 @@
       Before you ever turn on a real robot arm, you should test your code in simulation — a safe virtual copy of the robot that runs entirely on your computer. Crashing in simulation costs nothing; a mistake on the real arm can damage equipment or injure people. This chapter explains the three programs that make up the simulation environment, how to start them with a single command, and what to check to confirm everything is working correctly.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 3</h3>
+      <dl>
         <dt>Simulation</dt><dd>A virtual copy of the robot running on your computer. The same code that controls the simulation will (with small changes) control the real arm.</dd>
-        <dt>Gazebo</dt><dd>The physics simulation program. It pretends to be the real robot: it simulates gravity, inertia, motor dynamics, and contact forces. From ROS 2's point of view, Gazebo looks identical to real hardware.</dd>
-        <dt>RViz</dt><dd>A 3D visualization tool. It does <em>not</em> simulate physics — it just draws what it reads from ROS 2 topics. Use it to see where the robot is and what MoveIt 2 is planning.</dd>
-        <dt>URDF</dt><dd>"Unified Robot Description Format." A file that describes the robot's geometry (how long each link is, how the joints connect) and physical properties (mass, joint limits). It's like a blueprint for the robot.</dd>
-        <dt>XACRO</dt><dd>An extension of URDF that adds macros (reusable snippets), so you don't have to repeat the same numbers in many places. The Panda's model is written in XACRO.</dd>
-        <dt>TF tree</dt><dd>"Transform tree." A live record of where every link of the robot is relative to every other link, updated 1,000 times per second. Both RViz and MoveIt 2 read from it constantly.</dd>
-        <dt>Controller manager</dt><dd>The part of ros2_control that starts, stops, and switches between different motion controllers. Think of it as the control panel that decides which controller is active.</dd>
+        <dt>Gazebo</dt><dd>A physics-based robot simulator that simulates gravity, inertia, motor dynamics, and contact forces; publishes joint states and accepts joint commands, appearing identical to real hardware from ROS 2's perspective.</dd>
+        <dt>RViz</dt><dd>A 3D visualization tool; reads ROS 2 topics but has no physics engine.</dd>
+        <dt>URDF</dt><dd>Unified Robot Description Format — XML format describing robot geometry (link lengths, joint connections), inertia, and joint limits. Like a blueprint for the robot.</dd>
+        <dt>XACRO</dt><dd>An XML macro system used to modularize URDF files, avoiding repetition of the same numbers in many places.</dd>
+        <dt>TF2</dt><dd>ROS&nbsp;2 library that maintains a tree of time-stamped coordinate transforms, updated 1,000 times per second. Both RViz and MoveIt 2 read from it constantly.</dd>
+        <dt>controller_manager</dt><dd>Manages the lifecycle (load, configure, activate, deactivate) of ros2_control controllers; decides which controller is active.</dd>
         <dt>Launch file</dt><dd>A Python or XML script that starts multiple ROS 2 nodes at once with one command, instead of opening a separate terminal for each program.</dd>
+        <dt>Isaac Sim</dt><dd>NVIDIA's GPU-powered photorealistic simulator. Unlike Gazebo it renders camera images that look like real photos — used when training AI vision models. Introduced as a bonus project in Chapter 10 §10.6.</dd>
+        <dt>Sim-to-real transfer</dt><dd>Training a robot in simulation and then deploying the same model on real hardware. Isaac Sim's photorealistic rendering narrows the visual gap between training and deployment.</dd>
       </dl>
-    </div>
+    </aside>
 
     <section id="overview">
       <h2>3.1 Simulation Component Overview</h2>
       <p>
-        Three programs form the simulation stack. Each does a distinct job; understanding their
-        boundaries prevents confusion when something goes wrong.
+        Three programs form the simulation stack. Each does a distinct job, and understanding their
+        boundaries is the key to diagnosing problems. When something goes wrong, you can immediately
+        ask: is this a physics problem (Gazebo), a visualization problem (RViz), or a planning problem
+        (MoveIt&nbsp;2)?
       </p>
+
+      <p>
+        A second simulator — <strong>Isaac Sim</strong> (NVIDIA) — is also popular in advanced robotics research.
+        The key difference: Gazebo models physics (gravity, friction, joint dynamics) accurately but renders simple 3D graphics;
+        Isaac Sim adds a photorealistic GPU renderer that makes synthetic camera images look like real photographs.
+        That matters for training computer-vision models, but not for learning motion planning.
+        We use Gazebo throughout Chapters 1–9 for its simplicity and zero GPU requirement.
+        Chapter&nbsp;10 §10.6 introduces Isaac Sim once the fundamentals are solid.
+      </p>
+
       <ul>
         <li><strong>Gazebo</strong> — a physics engine. It simulates motor dynamics, gravity, inertia,
             and contact forces. From ROS&nbsp;2's perspective it appears as a hardware interface that
-            publishes <code>/joint_states</code> and accepts joint commands.</li>
+            publishes <code>/joint_states</code> and accepts joint commands — exactly as the real arm does.</li>
         <li><strong>RViz</strong> — a 3D visualization tool. It <em>does not simulate physics</em>;
             it only renders what it reads from ROS&nbsp;2 topics (joint states, TF frames, planning
             scenes). Running RViz without Gazebo shows the robot "frozen" at its initial pose.</li>
         <li><strong>MoveIt&nbsp;2</strong> — the motion planning framework (<code>move_group</code> node).
             It is physics-agnostic; it plans trajectories and sends them to whatever controller manager
-            is active — Gazebo in simulation, the real FCI on hardware.</li>
+            is active — Gazebo in simulation, the real FCI on hardware. You will explore its internals
+            in depth in Chapter&nbsp;8.</li>
       </ul>
 
       <div class="callout callout-analogy">
@@ -208,8 +223,11 @@
       <p>
         The <strong>Unified Robot Description Format</strong> (URDF) is an XML file that describes
         the robot's geometry, inertial properties, and joint limits <a class="cite" href="#ref1">[1]</a>.
-        For the Panda, the URDF is split into several <strong>XACRO</strong> (XML macro) files that
-        are assembled at launch time. Figure&nbsp;3.2 shows the include hierarchy.
+        Think of it as the robot's official blueprint: without an accurate URDF, the simulator
+        would not know the arm's link lengths, masses, or joint angles. For the Panda, the URDF
+        is split into several <strong>XACRO</strong> (XML macro) files — a macro system that lets you
+        define numbers once and reuse them in many places — that are assembled at launch time.
+        Figure&nbsp;3.2 shows the include hierarchy.
       </p>
 
       <!-- Figure 3.2: URDF/XACRO Structure -->
@@ -302,10 +320,11 @@
       <h2>3.3 The TF Tree</h2>
       <p>
         The <strong>TF2</strong> library maintains a tree of coordinate frame transforms that any
-        node can query at any time <a class="cite" href="#ref2">[2]</a>. For the Panda,
-        <code>robot_state_publisher</code> continuously publishes the transform from each link
-        to its parent based on the current <code>/joint_states</code>. Figure&nbsp;3.3 shows the
-        full Panda TF tree.
+        node can query at any time <a class="cite" href="#ref2">[2]</a>. You met coordinate frames
+        in Chapter&nbsp;2; TF2 is the ROS&nbsp;2 infrastructure that makes them live and
+        continuously updated. For the Panda, <code>robot_state_publisher</code> continuously
+        publishes the transform from each link to its parent based on the current
+        <code>/joint_states</code>. Figure&nbsp;3.3 shows the full Panda TF tree.
       </p>
 
       <!-- Figure 3.3: TF Tree -->
@@ -389,9 +408,13 @@
       <h2>3.4 The Controller Manager</h2>
       <p>
         The <code>controller_manager</code> node loads, configures, and activates controllers.
-        Each controller has a lifecycle state machine with four states, shown in Figure&nbsp;3.4.
-        Only one controller can be active per hardware interface at a time — switching from
-        position to impedance control means deactivating the position controller first.
+        A <em>controller</em> is an algorithm that reads the current joint state and computes
+        commands — for example, the <code>JointTrajectoryController</code> runs a PID loop
+        to track a planned path. Each controller has a lifecycle state machine with four states,
+        shown in Figure&nbsp;3.4. Only one controller can be active per hardware interface at a
+        time — switching from position to impedance control means deactivating the position
+        controller first. Chapter&nbsp;6 and Chapter&nbsp;7 will both involve switching controllers
+        to access different control modes.
       </p>
 
       <!-- Figure 3.4: Controller Manager State Machine -->
@@ -462,13 +485,17 @@
       <h2>3.5 Launching the Simulation</h2>
       <p>
         The following scripts launch the complete simulation stack and provide diagnostic commands
-        to verify every component is running correctly.
+        to verify every component is running correctly. Once you can reliably launch the simulation
+        and confirm all three controllers are active, you are ready for Chapter&nbsp;4 where you
+        will send your first motion commands.
       </p>
 
-      <div class="code-header">launch_sim.sh — Launch Gazebo + RViz + MoveIt 2</div>
+      <p>Run all commands below inside your simulation environment — either in the Docker container (started with step A4 from §1.4) or in a native Ubuntu terminal with your workspace sourced. Use a separate terminal tab for each script.</p>
+
+      <div class="code-header">launch_sim.sh — Terminal 1: Launch Gazebo + RViz + MoveIt 2</div>
 <pre><code class="language-bash">#!/usr/bin/env bash
 # Launch the full Panda simulation stack.
-# Run this in a dedicated terminal; it stays open.
+# Keep this terminal open the whole session — closing it stops everything.
 
 source /opt/ros/humble/setup.bash
 source ~/panda_ws/install/setup.bash
@@ -483,9 +510,10 @@ ros2 launch franka_moveit_config moveit.launch.py \
 #   use_fake_hardware:=true    → load Gazebo/fake hardware interface instead of FCI
 #   fake_sensor_commands:=true → allow setting joint states via service for testing</code></pre>
 
-      <div class="code-header">inspect_tf.sh — Dump TF tree to a PDF</div>
+      <div class="code-header">inspect_tf.sh — Terminal 2: Dump TF tree to a PDF</div>
 <pre><code class="language-bash">#!/usr/bin/env bash
 # Dump the running TF tree to frames.pdf (requires graphviz)
+# Run this after the simulation is fully started (Terminal 1).
 source /opt/ros/humble/setup.bash
 
 ros2 run tf2_tools view_frames &
@@ -501,7 +529,7 @@ echo ""
 echo "--- Dynamic transforms (first message) ---"
 ros2 topic echo /tf --once | head -50</code></pre>
 
-      <div class="code-header">list_controllers.sh — Verify controllers are active</div>
+      <div class="code-header">list_controllers.sh — Terminal 2: Verify controllers are active</div>
 <pre><code class="language-bash">#!/usr/bin/env bash
 source /opt/ros/humble/setup.bash
 
@@ -531,12 +559,13 @@ ros2 control list_hardware_components
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 3 Summary — What you learned:</strong>
+      <strong>Chapter 3 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>Gazebo</strong> simulates physics; <strong>RViz</strong> visualizes; <strong>MoveIt 2</strong> plans. These are three separate programs — each does exactly one job, and none can replace the others.</li>
-        <li>The <strong>URDF/XACRO model</strong> describes the robot's geometry, mass, and joint limits so Gazebo knows how the arm behaves physically; XACRO is URDF with macros so you don't repeat yourself.</li>
-        <li>The <strong>TF tree</strong> is a live record of where every link is relative to every other link, updated 1,000 times per second — RViz and MoveIt 2 read from it constantly.</li>
-        <li>One <code>ros2 launch</code> command starts the whole stack; if something goes wrong, check which layer (Gazebo, ros2_control, or MoveIt 2) is failing first.</li>
+        <li><strong>Simulate first, touch hardware last.</strong> Gazebo lets you run, crash, and fix your code without risking a &dollar;20,000 robot arm. Every chapter through 9 develops and validates code in Gazebo before considering real hardware deployment.</li>
+        <li>Three separate tools form the simulation environment and each does exactly one job: <strong>Gazebo</strong> runs the physics (the arm "lives" here); <strong>RViz</strong> visualizes coordinate frames, planned paths, and sensor data; <strong>MoveIt&nbsp;2</strong> generates collision-free motion plans. None can replace the others, and all three must be running for the full system to work.</li>
+        <li>The <strong>URDF/XACRO robot model</strong> is shared infrastructure — Gazebo reads it to simulate the arm's physics, MoveIt&nbsp;2 reads it to plan around the arm's geometry. If the model is wrong or inconsistent, both will behave incorrectly in hard-to-diagnose ways.</li>
+        <li>The <strong>TF tree</strong> is a live database updated 1,000 times per second recording where every robot link is relative to every other link. RViz reads it to draw the arm; MoveIt&nbsp;2 reads it to plan around the current configuration. A broken TF tree is the most common cause of "the arm looks wrong in RViz" bugs.</li>
+        <li>When something fails, diagnose layer by layer: Is Gazebo up? Is ros2_control running and controllers active? Is MoveIt&nbsp;2's move_group node connected? Work from the bottom of the stack up.</li>
       </ul>
     </div>
 
@@ -552,18 +581,6 @@ ros2 control list_hardware_components
             Can you reactivate it?</li>
       </ol>
     </section>
-
-    <aside class="key-terms">
-      <h3>Key Terms — Chapter 3</h3>
-      <dl>
-        <dt>Gazebo</dt><dd>A physics-based robot simulator that publishes joint states and accepts joint commands.</dd>
-        <dt>RViz</dt><dd>A 3D visualization tool; reads topics but has no physics.</dd>
-        <dt>URDF</dt><dd>XML format describing robot geometry, inertia, and joint limits.</dd>
-        <dt>XACRO</dt><dd>An XML macro system used to modularize URDF files.</dd>
-        <dt>TF2</dt><dd>ROS&nbsp;2 library that maintains a tree of time-stamped coordinate transforms.</dd>
-        <dt>controller_manager</dt><dd>Manages the lifecycle (load, configure, activate, deactivate) of ros2_control controllers.</dd>
-      </dl>
-    </aside>
 
     <section class="references" id="references">
       <h2>References</h2>

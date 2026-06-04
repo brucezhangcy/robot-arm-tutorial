@@ -58,19 +58,23 @@
       The simplest way to move a robot arm is to say "I want joint 1 at 45°, joint 2 at −30°…" and let the software figure out a safe path to get there. This chapter shows you how to do exactly that using Python and MoveIt 2. By the end, you will have working code that moves the Panda to any position you choose — entirely in simulation, so nothing can go wrong with real hardware.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Joint space</dt><dd>Describing the arm's configuration by listing the angle of each joint (7 numbers for the Panda). Like describing a person's pose by saying "shoulder at 45°, elbow at 90°."</dd>
-        <dt>Cartesian space</dt><dd>Describing the arm's configuration by the position and orientation of the gripper in 3D space (x, y, z + rotation). More intuitive for tasks, but harder for the computer to plan in directly.</dd>
-        <dt>Trajectory</dt><dd>A planned sequence of positions with timing — not just "where to go" but "go through these waypoints at these exact times." Like a flight plan with timestamps.</dd>
-        <dt>Waypoint</dt><dd>One target position in a trajectory. The arm passes through a series of waypoints, in order, to complete a motion.</dd>
-        <dt>C-space (configuration space)</dt><dd>The 7-dimensional mathematical space where every possible arm configuration is one point. The motion planner finds a path through this space that avoids obstacles.</dd>
-        <dt>PID controller</dt><dd>"Proportional-Integral-Derivative" — a standard algorithm that corrects the difference between where the arm is and where it should be, 1,000 times per second. It's what makes the arm actually follow the planned trajectory.</dd>
-        <dt>Planning pipeline</dt><dd>The sequence of steps MoveIt 2 runs to go from "I want to be at this joint configuration" to "here is a ready-to-execute trajectory." Roughly: plan → smooth → add timing → send to controller.</dd>
-        <dt>Action server</dt><dd>A ROS 2 pattern for long-running tasks. Your code sends a goal to an action server; the server sends back progress updates while it works, then a final result when done. MoveIt 2 uses an action server for motion planning.</dd>
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 4</h3>
+      <dl>
+        <dt>Joint space</dt><dd>Describing the arm's configuration by listing the angle of each joint (7 numbers for the Panda).</dd>
+        <dt>Cartesian space</dt><dd>Describing the arm's configuration by the position and orientation of the gripper in 3D space (x, y, z + rotation).</dd>
+        <dt>C-space</dt><dd>Configuration space — the 7D mathematical space where every possible arm configuration is one point.</dd>
+        <dt>Trajectory</dt><dd>A planned sequence of positions with timing — waypoints plus the exact times at which the arm must reach each one.</dd>
+        <dt>Waypoint</dt><dd>One target position in a trajectory; the arm passes through a series of waypoints in order.</dd>
+        <dt>PID controller</dt><dd>Proportional-Integral-Derivative — a standard algorithm that corrects the difference between where the arm is and where it should be, 1,000 times per second.</dd>
+        <dt>Planning pipeline</dt><dd>The sequence of steps MoveIt 2 runs to produce a ready-to-execute trajectory: plan → smooth → add timing → send to controller.</dd>
+        <dt>Action server</dt><dd>A ROS 2 pattern for long-running tasks; the server streams progress updates while working, then returns a final result.</dd>
+        <dt>RRTConnect</dt><dd>A bidirectional sampling-based planner that grows two trees from start and goal until they connect.</dd>
+        <dt>TOTG</dt><dd>Time-Optimal Trajectory Generation; assigns timestamps to raw planner waypoints to maximise speed within joint limits.</dd>
+        <dt>JointTrajectoryController</dt><dd>ros2_control controller that tracks a time-parameterized joint trajectory using PID.</dd>
+        <dt>Velocity scaling</dt><dd>A multiplier (0–1) applied to joint velocity limits to slow planned motions.</dd>
       </dl>
-    </div>
+    </aside>
 
     <section id="joint-vs-cartesian">
       <h2>4.1 Joint Space vs. Cartesian Space</h2>
@@ -88,8 +92,10 @@
         Joint-space control (this chapter) is simpler to reason about: you specify where each
         motor should end up, and the planner finds a collision-free path through joint angles.
         The end-effector path in Cartesian space is <em>not</em> straight — it follows whatever
-        arc the joints trace out. For picking and placing that's fine; for drawing a straight
-        line or sliding along a surface, use Cartesian control (Chapter&nbsp;5).
+        arc the joints trace out naturally. For moving to a named home position or a standard
+        pick pose, that is perfectly fine. But when the <em>shape</em> of the path matters —
+        drawing a straight line or approaching an object along a vertical axis — use Cartesian
+        control instead (Chapter&nbsp;5).
       </p>
     </section>
 
@@ -97,9 +103,10 @@
       <h2>4.2 The MoveIt&nbsp;2 Planning Pipeline</h2>
       <p>
         When you call <code>move_group.go()</code>, MoveIt&nbsp;2 runs a <em>planning pipeline</em>
-        that transforms your high-level goal into a stream of joint position setpoints delivered
-        to the <code>JointTrajectoryController</code> at 1&nbsp;kHz. Figure&nbsp;4.1 shows every
-        stage.
+        — a sequence of stages that transforms your high-level goal into a stream of joint position
+        setpoints delivered to the <code>JointTrajectoryController</code> at 1&nbsp;kHz. This is the
+        same pipeline described at a high level in Chapter&nbsp;1's software stack; here you see
+        the individual stages. Figure&nbsp;4.1 shows every stage.
       </p>
 
       <!-- Figure 4.1: Planning Pipeline -->
@@ -184,11 +191,13 @@
       <p>
         The planner does not work in 3D Euclidean space. It works in <strong>C-space</strong>
         (configuration space) — the 7-dimensional space of all possible joint angle vectors.
-        Each point in C-space is one complete arm configuration; each collision-free point is in
-        <em>free space</em> \(C_{\text{free}}\). The planner's job is to find a path from
-        the start point to the goal point entirely within \(C_{\text{free}}\).
-        RRTConnect (the default planner) grows two random trees from start and goal simultaneously
-        until they meet <a class="cite" href="#ref1">[1]</a>.
+        This concept appeared briefly in Chapter&nbsp;2 when we discussed the workspace: the
+        workspace is the image of C-space under forward kinematics. Each point in C-space is
+        one complete arm configuration; each collision-free point is in <em>free space</em>
+        \(C_{\text{free}}\). The planner's job is to find a path from the start point to the
+        goal point entirely within \(C_{\text{free}}\). RRTConnect (the default planner) grows
+        two random trees from start and goal simultaneously until they meet
+        <a class="cite" href="#ref1">[1]</a>.
       </p>
 
       <h3>4.2.2 Time Parameterization</h3>
@@ -276,8 +285,9 @@
       <h2>4.3 The MoveGroup Action Interface</h2>
       <p>
         Your Python node communicates with <code>move_group</code> through a ROS&nbsp;2
-        <em>action</em> — a long-running request with streaming feedback. Figure&nbsp;4.3 shows
-        the full message exchange for a joint-space move.
+        <em>action</em> — recall from Chapter&nbsp;1 that an action is the right tool for
+        long-running tasks with streaming feedback. Figure&nbsp;4.3 shows the full message
+        exchange for a joint-space move.
       </p>
 
       <!-- Figure 4.3: Action Sequence Diagram -->
@@ -351,8 +361,10 @@
     <section id="code">
       <h2>4.4 Code Examples</h2>
 
+      <p>Before running any code in this section, make sure the simulation is already running. Open a terminal (or Docker exec shell), source your workspace, and start the simulation with the launch command from Chapter 3 §3.5. Then open a second terminal for your Python script.</p>
+
       <h3>4.4.1 Move to a Joint Goal</h3>
-      <div class="code-header">joint_goal_client.py</div>
+      <div class="code-header">joint_goal_client.py — run in a second terminal while launch_sim.sh is running</div>
 <pre><code class="language-python">#!/usr/bin/env python3
 """
 Move the Panda to a named joint configuration via MoveIt 2.
@@ -427,8 +439,10 @@ if __name__ == '__main__':
     main()</code></pre>
 
       <h3>4.4.2 Direct Trajectory Client (bypasses MoveIt&nbsp;2)</h3>
-      <div class="code-header">joint_trajectory_client.py</div>
-<pre><code class="language-python">#!/usr/bin/env python3"""
+      <p>This approach skips MoveIt 2's planner and sends trajectory commands directly to the controller. There is <em>no collision checking</em> — only use this for simple, pre-verified motions. Run in a terminal while the simulation is running (the same setup as §4.4.1).</p>
+      <div class="code-header">joint_trajectory_client.py — run in a second terminal while launch_sim.sh is running</div>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""
 Send a JointTrajectory message directly to the JointTrajectoryController
 action server, bypassing MoveIt 2's planner. Use only for simple,
 pre-verified motions — no collision checking is performed.
@@ -558,7 +572,8 @@ class JointStateMonitor(Node):
                      if n.startswith('panda_joint') and 'finger' not in n]
 
         print('\033[2J\033[H', end='')  # clear terminal
-        print(f'{'Joint':<16} {'Pos (rad)':>12} {'Vel (rad/s)':>12} {'Effort (Nm)':>12}')
+        header = f"{'Joint':<16} {'Pos (rad)':>12} {'Vel (rad/s)':>12} {'Effort (Nm)':>12}"
+        print(header)
         print('-' * 56)
         for i in panda_idx:
             name = msg.name[i]
@@ -580,12 +595,12 @@ if __name__ == '__main__':
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 4 Summary — What you learned:</strong>
+      <strong>Chapter 4 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li><strong>Joint space</strong> means commanding the 7 joint angles directly; <strong>Cartesian space</strong> means commanding a position and orientation in 3D. Joint space is simpler; Cartesian space is more intuitive for task-level goals.</li>
-        <li>The MoveIt 2 <strong>planning pipeline</strong> automatically handles the hard parts: sampling a collision-free path through the 7D joint space, simplifying it, and assigning realistic speed/acceleration limits.</li>
-        <li>The <strong>JointTrajectoryController</strong> tracks the planned path using a PID loop running at 1 kHz — one independent PID per joint.</li>
-        <li>You can bypass MoveIt 2 entirely and send trajectories directly to the controller for timing-critical applications where you want exact control over when each waypoint is reached.</li>
+        <li>Joint-space motion planning is the simplest form of arm control: you specify <strong>target joint angles</strong> and MoveIt&nbsp;2 finds a smooth, collision-free path through the 7-dimensional space of all possible configurations — without you needing to think about how the gripper traces through 3D space.</li>
+        <li>The <strong>planning pipeline</strong> does three things automatically: samples a collision-free path (OMPL planner), simplifies the path to remove unnecessary detours, then assigns speed and acceleration limits so the hardware is never overloaded. You set the goal; MoveIt&nbsp;2 figures out everything in between.</li>
+        <li>Your Python code is not what moves the arm. The <strong>JointTrajectoryController</strong> inside ros2_control is — it runs a PID loop at 1&nbsp;kHz, one per joint, tracking the planned trajectory. Your code simply sends the goal and waits. Understanding this separation is key to diagnosing why the arm "didn't follow the plan."</li>
+        <li>For timing-critical applications where you need exact control over the speed and timing of each waypoint, you can bypass MoveIt&nbsp;2 and send trajectories directly to the controller — useful for synchronized multi-arm tasks or precise pick-and-place timing.</li>
       </ul>
     </div>
 
@@ -603,17 +618,6 @@ if __name__ == '__main__':
             How does it change the smoothness of motion in RViz?</li>
       </ol>
     </section>
-
-    <aside class="key-terms">
-      <h3>Key Terms — Chapter 4</h3>
-      <dl>
-        <dt>C-space</dt><dd>Configuration space; the 7D space of all joint angle vectors.</dd>
-        <dt>RRTConnect</dt><dd>A bidirectional sampling-based planner that grows two trees from start and goal.</dd>
-        <dt>TOTG</dt><dd>Time-Optimal Trajectory Generation; assigns timestamps to raw planner waypoints.</dd>
-        <dt>JointTrajectoryController</dt><dd>ros2_control controller that tracks a time-parameterized joint trajectory using PID.</dd>
-        <dt>Velocity scaling</dt><dd>A multiplier (0–1) applied to joint velocity limits to slow planned motions.</dd>
-      </dl>
-    </aside>
 
     <section class="references" id="references">
       <h2>References</h2>

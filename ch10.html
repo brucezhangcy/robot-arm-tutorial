@@ -68,22 +68,25 @@
   <main>
 
     <div class="chapter-abstract">
-      This is the chapter where everything comes together. You will write a complete program that makes the Panda arm pick up an object from one location and place it somewhere else — handling every step from opening the gripper to returning home. Nothing here is conceptually new; it combines the tools from Chapters 4–9 into one working application. Think of it as the final project for the tutorial.
+      This is the chapter where everything comes together. You will write a complete program that makes the Panda arm pick up an object from one location and place it somewhere else — handling every step from opening the gripper to returning home. Nothing here is conceptually new; it combines the tools from Chapters 4–9 into one working application. Think of it as the final project for the tutorial. If something feels unfamiliar, the chapter references will point you back to exactly where it was introduced.
     </div>
 
-    <div class="callout callout-note">
-      <strong>New terms in this chapter — read these first</strong>
-      <dl style="margin-top:0.5rem;">
-        <dt>Finite state machine (FSM)</dt><dd>A way to organize a complex task as a list of discrete steps ("states"). The program is always in exactly one state at a time. When certain conditions are met (success, failure, timeout), it transitions to the next state. Makes multi-step tasks easy to debug and restart at any step.</dd>
-        <dt>State</dt><dd>One step in the FSM. For example: APPROACH, GRASP, LIFT, TRANSPORT. Each state does exactly one thing and then checks whether to continue or report an error.</dd>
-        <dt>Transition</dt><dd>The switch from one state to another. Triggered by a condition: "gripper is closed AND object is detected → transition to LIFT."</dd>
-        <dt>Pre-grasp pose</dt><dd>A position above the target object, reached before the arm descends to grasp. This approach-from-above ensures the arm doesn't knock the object sideways as it arrives.</dd>
-        <dt>Cartesian descent</dt><dd>A straight downward movement in Cartesian space (constant x and y, decreasing z) from the pre-grasp pose to the grasp pose. Essential so the gripper arrives directly above the object.</dd>
-        <dt>Path fraction</dt><dd>The proportion of a Cartesian path that could be planned collision-free. A value below about 0.95 means part of the path is blocked — the move should be aborted and the scene checked.</dd>
-        <dt>Retract pose</dt><dd>A position above the place location, reached after releasing the object. Lifts the gripper clear before returning home, preventing it from dragging across the placed object.</dd>
-        <dt>Node graph</dt><dd>A diagram showing all the ROS 2 nodes active during the task and the topics/services/actions connecting them. Drawing the node graph before coding helps you plan the architecture.</dd>
+    <!-- Key Terms -->
+    <aside class="key-terms">
+      <h3>Key Terms — Chapter 10</h3>
+      <dl>
+        <dt>Finite state machine (FSM)</dt><dd>A control structure that models a complex task as a set of discrete states (e.g., APPROACH, GRASP, LIFT, TRANSPORT) with transitions triggered by conditions; makes multi-step tasks easy to debug and restart.</dd>
+        <dt>State</dt><dd>One step in the FSM; each state does exactly one thing and then checks whether to continue or report an error.</dd>
+        <dt>Transition</dt><dd>The switch from one FSM state to another, triggered by a condition such as "gripper is closed AND object is detected."</dd>
+        <dt>Pre-grasp pose</dt><dd>A pose above the object, reached before the Cartesian descent; ensures the arm approaches from above and does not knock the object sideways.</dd>
+        <dt>Cartesian descent</dt><dd>A straight downward movement in Cartesian space (constant x and y, decreasing z) from the pre-grasp pose to the grasp pose, computed by <code>compute_cartesian_path</code>.</dd>
+        <dt>Cartesian straight-line path</dt><dd>A path in which the end-effector moves in a straight line in Cartesian space; critical for vertical pick-and-place descents to avoid dragging the object sideways.</dd>
+        <dt>Grasp action</dt><dd>The franka_gripper action that closes the fingers to a target width with a target force and confirms whether an object was gripped.</dd>
+        <dt>Path fraction</dt><dd>The proportion of the requested Cartesian waypoints that could be reached collision-free; a fraction below the threshold (e.g., 0.95) causes the move to be aborted.</dd>
+        <dt>Retract pose</dt><dd>A pose above the place location, reached after releasing the object; lifts the gripper clear before the final return-to-home move.</dd>
+        <dt>Node graph</dt><dd>A diagram showing all the ROS 2 nodes active during the task and the topics/services/actions connecting them.</dd>
       </dl>
-    </div>
+    </aside>
 
     <!-- ════════════════════════════════════════════════
          §10.1  Task Overview
@@ -108,9 +111,19 @@
       </ol>
 
       <p>
+        Each of those steps draws on a specific skill from an earlier chapter: steps 3,
+        5, 6, and 7 use the <code>compute_cartesian_path</code> technique from
+        Chapter&nbsp;5; steps 4 and 8 use the gripper action interface first seen in
+        Chapter&nbsp;8's deep dive; and step 2 relies on the joint-space planner from
+        Chapter&nbsp;4 to reach the pre-grasp pose without constraining the path.
+      </p>
+
+      <p>
         This is a <strong>nine-step</strong> deterministic sequence. We encode it as a
         finite state machine (FSM) so that each step is atomic and failures can be
-        caught and handled state-by-state.
+        caught and handled state-by-state. The FSM pattern also makes debugging
+        straightforward: when the arm stops unexpectedly, the logger tells you exactly
+        which state failed and why.
       </p>
     </section>
 
@@ -119,6 +132,17 @@
          ════════════════════════════════════════════════ -->
     <section id="fsm">
       <h2>10.2 Finite State Machine Design</h2>
+
+      <p>
+        Why use a finite state machine instead of a flat sequence of function calls?
+        Because real hardware fails in unexpected ways. A flat sequence crashes the whole
+        program the moment a gripper action times out; an FSM gracefully transitions to
+        ERROR, logs the failing state, and stops all motion safely — exactly the behaviour
+        you practised in Chapter&nbsp;9's emergency-stop discussion. Each state in the FSM
+        does exactly one job, which also makes testing easier: you can jump the arm to
+        the GRASP state in isolation and confirm the gripper closes correctly without
+        re-running the entire approach sequence.
+      </p>
 
       <!-- ── Figure 10.1: FSM state diagram ── -->
       <figure id="fig10-1">
@@ -220,7 +244,10 @@
       <p>
         Each state is a Python method that returns <code>True</code> (success, advance to
         next state) or <code>False</code> (failure, enter ERROR state). The main loop
-        iterates the state list until DONE or ERROR is reached.
+        iterates the state list until DONE or ERROR is reached. This is the same principle
+        behind the ROS&nbsp;2 action feedback loop described in Chapter&nbsp;4 — a
+        long-running task broken into stages with a clear success/failure result at each
+        stage. The key difference here is that <em>you</em> are the one designing the stages.
       </p>
     </section>
 
@@ -229,6 +256,14 @@
          ════════════════════════════════════════════════ -->
     <section id="node-graph">
       <h2>10.3 Full Node Graph</h2>
+
+      <p>
+        Before you run the FSM, it helps to see the full picture of what is running.
+        Figure&nbsp;10.2 shows every ROS&nbsp;2 node that must be active during a
+        pick-and-place cycle. If any of these nodes is missing, the FSM will stall
+        silently — knowing the graph lets you quickly diagnose which node is
+        absent by checking <code>ros2 node list</code>.
+      </p>
 
       <!-- ── Figure 10.2: node graph ── -->
       <figure id="fig10-2">
@@ -309,6 +344,17 @@
           scene. All nodes communicate via standard ROS&nbsp;2 topics and services.
         </figcaption>
       </figure>
+
+      <p>
+        Each node in Figure&nbsp;10.2 was introduced at some point in the tutorial.
+        The <code>move_group</code> node is the MoveIt&nbsp;2 planning server you explored
+        in Chapter&nbsp;8. The <code>robot_state_publisher</code> broadcasts the TF frames
+        you first met in Chapter&nbsp;2 and tracked in Chapter&nbsp;3. The
+        <code>ros2_control</code> layer with its JointTrajectoryController appeared in
+        Chapter&nbsp;4, and the planning scene collision-checking was a recurring theme in
+        Chapters&nbsp;8 and&nbsp;9. Nothing in this graph is new — what is new is that all
+        of them are running simultaneously, orchestrated by the single FSM node you write.
+      </p>
     </section>
 
     <!-- ════════════════════════════════════════════════
@@ -316,6 +362,16 @@
          ════════════════════════════════════════════════ -->
     <section id="trajectory">
       <h2>10.4 EEF Trajectory</h2>
+
+      <p>
+        The FSM states from §10.2 each move the end-effector somewhere. Figure&nbsp;10.3
+        shows exactly where — a side-view map of the complete end-effector path.
+        Designing this trajectory carefully is one of the most important decisions in
+        pick-and-place: the wrong path sequence will knock the object sideways or collide
+        with the table on the way down. Recall from Chapter&nbsp;5 that the
+        end-effector's Cartesian pose has six degrees of freedom — position and
+        orientation — and that every waypoint in the path must specify both.
+      </p>
 
       <!-- ── Figure 10.3: EEF trajectory ── -->
       <figure id="fig10-3">
@@ -342,11 +398,11 @@
 
             <!-- Object at pick location (left) -->
             <rect x="78" y="165" width="24" height="35" rx="3" fill="#fbbf24" stroke="#d97706" stroke-width="1.5"/>
-            <text x="90" y="160" text-anchor="middle" fill="#d97706" font-size="8">Object</text>
+            <text x="73" y="183" text-anchor="end" fill="#d97706" font-size="8">Object</text>
 
             <!-- Goal location (right) -->
             <rect x="358" y="175" width="24" height="25" rx="2" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="3,2"/>
-            <text x="370" y="170" text-anchor="middle" fill="#6b7280" font-size="8">Goal</text>
+            <text x="386" y="187" text-anchor="start" fill="#6b7280" font-size="8">Goal</text>
 
             <!-- Waypoints and trajectory path -->
             <!-- 1: HOME -->
@@ -419,9 +475,13 @@
         The critical design choice: <strong>all vertical and horizontal segments are
         Cartesian straight-lines</strong> (computed with <code>compute_cartesian_path</code>
         from Chapter&nbsp;5). This ensures the object moves in a predictable path — important
-        when working near other objects on a cluttered table. The initial HOME→PRE-GRASP
-        move and the final RETRACT→HOME move are left to the OMPL planner because no
-        object is held and path shape does not matter.
+        when working near other objects on a cluttered table. Why does this matter? Recall
+        from Chapter&nbsp;5 that an OMPL-planned path moves through joint space and the
+        end-effector traces a curved arc in Cartesian space. If you are holding a fragile
+        object, a surprise arc could swing it into something. Cartesian straight-line paths
+        remove that uncertainty entirely. The initial HOME→PRE-GRASP move and the final
+        RETRACT→HOME move are left to the OMPL planner because no object is held and path
+        shape does not matter — any collision-free path is acceptable.
       </p>
     </section>
 
@@ -430,6 +490,19 @@
          ════════════════════════════════════════════════ -->
     <section id="implementation">
       <h2>10.5 Full Implementation</h2>
+
+      <p>Before running this code, make sure the simulation stack is running (see §3.5). In simulation: start with <code>launch_sim.sh</code>. On real hardware: follow the four-terminal sequence from §9.4. Then run <code>pick_and_place.py</code> in a separate terminal with your workspace sourced.</p>
+
+      <p>
+        The code below is the complete pick-and-place node. Read it in sections: the task
+        parameters at the top are the only numbers you need to change for a different object
+        or table layout; the helper methods (<code>_plan_to_pose</code>,
+        <code>_cartesian_move</code>, and the gripper wrappers) are reusable in any
+        future project; and the FSM runner at the bottom maps directly to the state
+        diagram in Figure&nbsp;10.1. The <code>MoveItPy</code> interface used here
+        was explained in detail in Chapter&nbsp;8 — if a method call looks unfamiliar,
+        that is where to look it up.
+      </p>
 
       <pre><code class="language-python">#!/usr/bin/env python3
 """
@@ -509,9 +582,9 @@ class PickAndPlaceNode(Node):
         self.hand = self.moveit.get_planning_component('panda_hand')
 
         self._grasp_client = ActionClient(
-            self, Grasp, '/fr3_gripper/grasp')
+            self, Grasp, '/franka_gripper/grasp')
         self._move_client  = ActionClient(
-            self, GripperMove, '/fr3_gripper/move')
+            self, GripperMove, '/franka_gripper/move')
 
         self.get_logger().info('Pick-and-place node ready.')
 
@@ -657,18 +730,22 @@ if __name__ == '__main__':
         <strong>Before running on real hardware:</strong>
         complete the Chapter&nbsp;9 safety checklist, set <code>VEL_SCALE = 0.05</code>
         for the first run, and keep your hand on the E-stop. Increase speed only after
-        confirming the full sequence in simulation.
+        confirming the full sequence in simulation. Remember from Chapter&nbsp;9 that
+        the real arm has calibration and network-latency differences that can shift the
+        actual grasp pose by a few millimetres — add a small tolerance to
+        <code>epsilon.inner</code> and <code>epsilon.outer</code> so the grasp action
+        does not reject a successful grip just because the finger position is slightly off.
       </div>
     </section>
 
     <!-- Chapter Summary -->
     <div class="callout callout-summary">
-      <strong>Chapter 10 Summary — What you learned:</strong>
+      <strong>Chapter 10 Summary</strong>
       <ul style="margin:0.5rem 0 0 1rem;">
-        <li>A <strong>finite state machine (FSM)</strong> structures a multi-step task into discrete, atomic states — each state does exactly one thing, and transitions are triggered by success or failure. This makes complex sequences easy to debug and safe to run on real hardware.</li>
-        <li>The key rule for pick-and-place: always approach from <strong>above</strong> (pre-grasp pose) before descending straight down to the grasp — going directly to the grasp pose risks knocking the object sideways.</li>
-        <li>The motion primitives from Chapters 4–8 (joint goal, Cartesian path, gripper action) are assembled here into a complete, working task. Nothing in this chapter is new machinery — it is integration.</li>
-        <li>On real hardware: start at <strong>10% speed</strong>, verify each state transition manually, keep your hand on the E-stop, and only increase speed after the full sequence runs reliably in simulation.</li>
+        <li>Pick-and-place is the "hello world" of robot arm programming — and completing it requires <strong>every skill built in Chapters 2–9</strong>: kinematics (Ch&nbsp;2), simulation (Ch&nbsp;3), joint-space and Cartesian planning (Ch&nbsp;4–5), velocity-aware motion (Ch&nbsp;6), safe contact (Ch&nbsp;7), obstacle-aware planning (Ch&nbsp;8), and hardware transition (Ch&nbsp;9). Nothing in this chapter is new machinery; the chapter is about integration. That is the point.</li>
+        <li>A <strong>finite state machine (FSM)</strong> is the right way to structure any multi-step robot task. Each state (APPROACH → DESCEND → GRASP → LIFT → TRANSPORT → PLACE → RETREAT) does exactly one thing; transitions are triggered by success or failure, not by time. This makes the sequence readable, pausable, and safe — you can see exactly which state failed and why.</li>
+        <li>The key physical rule: always <strong>approach from above</strong> (pre-grasp pose) before descending straight down to the grasp. Commanding the gripper directly to the grasp pose in joint space causes the gripper to arc sideways, knocking the object off position before the fingers close. Cartesian descent solves this.</li>
+        <li>For hardware deployment, follow Chapter&nbsp;9's protocol without shortcuts: <strong>10% speed first</strong>, verify each FSM state transition manually, keep your hand on the E-stop. The full sequence should run reliably in simulation at 100% speed before any hardware run begins.</li>
       </ul>
     </div>
 
@@ -680,9 +757,10 @@ if __name__ == '__main__':
 
       <p>
         Everything you built in §10.5 runs inside <strong>Gazebo</strong> — a fast, lightweight
-        physics simulator. Gazebo is ideal for testing control code because it integrates directly
-        with ros2_control and runs on any laptop. But it has a visible limitation: the 3D rendering
-        looks like a game engine from 2005.
+        physics simulator. You set up Gazebo in Chapter&nbsp;3, and it has been the testing
+        environment for every chapter since. Gazebo is ideal for testing control code because
+        it integrates directly with ros2_control and runs on any laptop. But it has a visible
+        limitation: the 3D rendering looks like a game engine from 2005.
       </p>
 
       <p>
@@ -785,7 +863,9 @@ for _ in range(50):
         Isaac Sim lets you set joint angles directly with
         <code>robot.set_joint_positions()</code>. The function below smoothly interpolates the
         arm from its current configuration to a target joint configuration — the same waypoints
-        used in §10.5.
+        used in §10.5. Notice that Isaac Sim bypasses ROS&nbsp;2 entirely and drives joints
+        directly; this is why it is better suited for training data generation than for testing
+        real control code, where you want to exercise the full ROS&nbsp;2 communication stack.
       </p>
 
       <div class="callout callout-note">
@@ -853,7 +933,11 @@ print("Sequence complete!")
 
       <h3>10.6.4 What to Observe</h3>
 
-      <p>When you run this in Isaac Sim, compare it to the Gazebo version:</p>
+      <p>When you run this in Isaac Sim, compare it to the Gazebo version. The motion looks
+        identical in terms of joint angles, but the lighting, shadows, and cube physics will look
+        dramatically more realistic. This comparison makes concrete the trade-off that has been
+        implicit since Chapter&nbsp;3: Gazebo wins for software integration, Isaac Sim wins for
+        visual fidelity and sensor simulation.</p>
 
       <table>
         <thead>
@@ -935,34 +1019,6 @@ print("Sequence complete!")
         </li>
       </ol>
     </section>
-
-    <!-- Key Terms -->
-    <aside class="key-terms">
-      <h2>Key Terms</h2>
-      <dl>
-        <dt>Finite state machine (FSM)</dt>
-        <dd>A control structure that models a system as a set of discrete states with
-            transitions triggered by events or conditions; here, each state is one phase
-            of the pick-and-place sequence.</dd>
-        <dt>Pre-grasp pose</dt>
-        <dd>A pose above the object, reached by a planned (unconstrained) move before the
-            Cartesian descent; avoids hitting the object during the approach.</dd>
-        <dt>Cartesian straight-line path</dt>
-        <dd>A path in which the end-effector moves in a straight line in Cartesian space,
-            computed by <code>compute_cartesian_path</code>; critical for vertical pick and
-            place descents to avoid dragging the object sideways.</dd>
-        <dt>Grasp action</dt>
-        <dd>The franka_gripper action that closes the fingers to a target width with a
-            target force and confirms whether an object was gripped.</dd>
-        <dt>Path fraction</dt>
-        <dd>The proportion of the requested Cartesian waypoints that could be reached
-            collision-free; a fraction below the threshold (e.g., 0.95) causes the move
-            to be aborted.</dd>
-        <dt>Retract pose</dt>
-        <dd>A pose above the place location, reached after releasing the object; lifts
-            the gripper clear before the final return-to-home move.</dd>
-      </dl>
-    </aside>
 
     <!-- References -->
     <section class="references" id="references">

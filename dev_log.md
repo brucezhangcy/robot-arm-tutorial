@@ -298,20 +298,212 @@ Audited every SVG figure across all 10 chapters, appendix pages, and appendix-ha
 
 ---
 
-## Planned Work
+## 2026-06-02 — Readability Overhaul & Diagram Fixes
 
-| File | Topic | Key Diagrams |
-|---|---|---|
-| ~~`ch05.html`~~ | ~~Position Control — Cartesian~~ | ✓ Complete (2026-05-16) |
-| ~~`ch06.html`~~ | ~~Velocity Control~~ | ✓ Complete (2026-05-19) |
-| ~~`ch07.html`~~ | ~~Impedance & Torque Control~~ | ✓ Complete (2026-05-24) |
-| ~~`ch08.html`~~ | ~~MoveIt 2 Deep Dive~~ | ✓ Complete (2026-05-24) |
-| ~~`ch09.html`~~ | ~~Real Hardware Transition~~ | ✓ Complete (2026-05-24) |
-| ~~`ch10.html`~~ | ~~Pick & Place Capstone~~ | ✓ Complete (2026-05-24) |
-| ~~`appendix.html`~~ | ~~Appendices A–C~~ | ✓ Complete (2026-05-24) |
-| `ch06.html` | Velocity Control | Closed-loop block diagram, trapezoidal profile, timing |
-| `ch07.html` | Impedance & Torque Control *(centerpiece)* | Mass-spring-damper, full block diagram, Kp/Kd space |
-| `ch08.html` | MoveIt 2 Deep Dive | OMPL planner trees, planning scene, constraint cone |
-| `ch09.html` | Real Hardware Transition | Safety flowchart, hardware comms, latency comparison |
-| `ch10.html` | Pick & Place Capstone | FSM state diagram, 3D EEF trajectory, full node graph |
-| `appendix.html` | Appendices A–C | ROS 2/Python primer, DH table, troubleshooting |
+### Vocabulary Cards → Merged into End-of-Chapter Key Terms
+- Removed the "New terms in this chapter — read these first" callout-note box from the top of every chapter (ch01–ch10); it duplicated the end-of-chapter Key Terms aside.
+- Merged all unique terms from the removed cards into the `<aside class="key-terms">` at the end of each chapter.
+- Key Terms asides were then moved to the TOP of each chapter (directly after the chapter abstract) so students see definitions before reading the content.
+- `style.css`: styled `.callout-note dl dt` as blue badge pills (bold, accent-lt background, border-radius 3px) to visually distinguish terms from definitions.
+
+### Figure Fixes
+| File | Figure | Issue | Fix |
+|---|---|---|---|
+| `ch01.html` | Fig 1.3 (ROS 2 node graph) | `controller_manager` in far-left column; `follow_joint_trajectory` arrow was a confusing L-shape crossing the diagram | Redesigned entire SVG layout: `controller_manager` now in center column directly below `move_group`; arrow is a clean straight-down line labeled "trajectory commands" |
+| `ch01.html` | Fig 1.1 (Panda anatomy) | `rotate(-30)` transform on Link 3 made arm look awkwardly bent; several joint labels unclear | Removed rotation; redrew as clean vertical schematic; wrist group (J5–J7) in lighter blue; all 7 joints labeled; annotation lines shortened |
+| `ch10.html` | Fig 10.3 (EEF trajectory) | "Object" and "Goal" labels covered by vertical arrows at x=90 and x=370 | Moved "Object" label to left of box (`text-anchor="end"`); moved "Goal" label to right of its box |
+| `appendix-hardware.html` | Fig D.1 (top-view mounting) | "Baseplate" and "origin" text overlapping (7 px apart over center dot) | Moved "Base plate / 120×120mm" to top of rect (y=104/116); "origin" shifted right of dot (x=440, y=152) |
+| `appendix-hardware.html` | Fig D.2 (torque bar chart) | "87 Nm" value labels for J1/J2 overlapping the Arm legend box | Moved labels inside the dark blue bars as white text (`text-anchor="end"`) |
+
+### Prose Improvements (all 10 chapters)
+- Rewrote chapter abstracts in plain English for all chapters via agent
+- Added transition sentences linking paragraphs and backward/forward references between chapters
+- Added occasional rhetorical questions and relatable analogies
+- Standardized terminology: "MoveIt 2", "end-effector", "ROS 2" consistent throughout
+- `style.css`: added `.callout-summary` (purple) and `.callout-analogy` (orange) callout types
+
+### ch10 §10.6 — Isaac Sim Bonus Project
+Added complete §10.6 "Bonus Project: Visualizing Pick & Place in Isaac Sim" including:
+- scene_setup.py: loads Franka + DynamicCuboid in Isaac Sim World
+- replay_trajectory.py: interpolates HOME → PRE-GRASP → GRASP → PLACE joint configs at 120 steps each
+- Gazebo vs. Isaac Sim comparison table
+
+---
+
+## 2026-06-03 (session 4) — Testing Scope Clarification, Apple Silicon Limitation, Tutorial Note
+
+### What Was Actually Tested (and What Was Not)
+Static analysis only — no runtime execution was performed. Honest breakdown:
+
+| Test | Result |
+|---|---|
+| Python syntax (`py_compile`) on all 26 code blocks | ✅ 26/26 pass (after 1 bug fix) |
+| Import availability inside ROS 2 Humble container | ✅ 11/11 pass |
+| apt package names valid in Humble repo | ✅ 7/7 confirmed |
+| Code actually runs (runtime behavior) | ❌ Not tested — needs full ROS 2 stack |
+| Gazebo simulation executes | ❌ Not tested — blocked on Apple Silicon |
+| MoveIt 2 planning produces correct trajectories | ❌ Not tested |
+| pick_and_place.py end-to-end | ❌ Not tested |
+
+Runtime testing requires a full Ubuntu 22.04 machine with ROS 2 Humble, franka_ros2 built, and either hardware or Gazebo running. This cannot be automated from macOS Apple Silicon.
+
+### Apple Silicon + Docker GUI Limitation Discovered
+Attempted to launch RViz 2 inside `osrf/ros:humble-desktop` via Docker Desktop + XQuartz:
+- X11 TCP connection established successfully (XQuartz `nolisten_tcp` changed from 1 → 0)
+- URDF generated correctly from `franka_description` (15 KB, all 14 links parsed)
+- `robot_state_publisher` and `joint_state_publisher_gui` started successfully
+- **RViz 2 crashed** with `GLXContext` error on every attempt
+
+**Root cause:** `osrf/ros:humble-desktop` is amd64-only. On Apple Silicon Macs, Docker Desktop runs it via Rosetta 2 emulation in a VM with no GPU access. XQuartz provides X11 but not hardware-accelerated GLX. OGRE (RViz 2's renderer) requires hardware OpenGL and has no software fallback in this configuration. Mesa software renderer env vars (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=softpipe`) did not help because GLX context creation fails before OGRE reaches the Mesa layer.
+
+**Affected tools:** RViz 2, Gazebo (both use hardware OpenGL). ROS 2 nodes, Python scripts, MoveIt 2 planning (headless) all work correctly on Apple Silicon Docker.
+
+**Does not affect:** Intel Mac + Docker + XQuartz (hardware GLX available), Ubuntu 22.04 native/VM with GPU.
+
+### Tutorial Updated
+- **ch01.html §1.4**: Rewrote the "Which option?" decision box to be honest about platform limitations. Added a `callout-warning` table before Option A/B showing exactly what works per platform (Ubuntu, macOS Apple Silicon, macOS Intel, Windows). Updated Option A heading from "recommended for macOS" to "code development · macOS · Windows". Added `callout-warning` before A6 explaining the Apple Silicon OpenGL crash. Updated Chapter 1 Summary bullet to replace misleading Docker claim with the honest recommendation: Ubuntu 22.04 is the only platform where everything works; Mac users need a VM or cloud Ubuntu.
+
+### Key Design Decision
+The tutorial was previously misleading — it implied Docker on macOS was a complete solution. It is not: Docker on Mac supports code development and headless ROS 2, but Gazebo and RViz (central to Chapters 3–10) cannot render on macOS Apple Silicon due to the OpenGL/Rosetta/XQuartz limitation. The tutorial now states this upfront with a platform compatibility table and recommends UTM/Parallels VM or a cloud Ubuntu VM as the Mac path.
+
+### Browser-Based FK Visualization Generated
+- `panda_viz.html`: Interactive Plotly 3D visualization of 4 pick-and-place configurations (Home, Pre-grasp, Grasp, Place) computed from the tutorial's DH parameters (ch02). Opened in browser. Not part of the tutorial — generated as a verification artifact.
+
+---
+
+## 2026-06-03 (session 3) — Docker Verification, Code Syntax & Import Checks, Bug Fix
+
+### Docker Environment Verified
+- Confirmed Docker Desktop running (v29.5.2) and XQuartz installed (`/opt/X11/bin/xquartz`).
+- Pulled `osrf/ros:humble-desktop` image (~2 GB).
+- Verified all 7 tutorial apt packages exist in the ROS 2 Humble repo: `ros-humble-moveit`, `ros-humble-franka-description`, `ros-humble-franka-msgs`, `ros-humble-gazebo-ros2-control`, `ros-humble-ros2-control`, `ros-humble-ros2-controllers`, `python3-rosdep`.
+
+### Python Syntax Check — 26/26 Pass
+- Extracted all 26 Python code blocks from ch01–ch10 HTML files.
+- Ran `python3 -m py_compile` on each block inside `osrf/ros:humble-desktop` container (Python 3.10).
+- **1 failure found and fixed:** `ch04.html` line 575 — f-string with nested single-quotes (`print(f'{'Joint':<16} ...')`) is valid Python 3.12+ but a `SyntaxError` in Python 3.10 (Ubuntu 22.04). Fixed by extracting the header string to a separate variable: `header = f"{'Joint':<16} ..."; print(header)`.
+- All 26 blocks pass after fix.
+
+### Python Import Check — 11/11 Pass
+Ran inside a single container session (apt-get install → source setup.bash → python3):
+- `rclpy`, `rclpy.node.Node`, `rclpy.action.ActionClient` ✓
+- `sensor_msgs.msg.JointState` ✓
+- `geometry_msgs.msg.Pose/Point/Quaternion` ✓
+- `trajectory_msgs.msg.JointTrajectory/JointTrajectoryPoint` ✓
+- `control_msgs.action.FollowJointTrajectory` ✓ (requires `ros-humble-control-msgs`)
+- `franka_msgs.action.Grasp, Move as GripperMove` ✓ (requires `ros-humble-franka-msgs`)
+- `numpy`, `math`, `scipy.spatial.transform.Rotation` ✓
+
+### Summary Heading Cleanup
+- Removed "— Big picture:" suffix from all 10 chapter summary headings (became just "Chapter N Summary").
+- Removed trailing "—" from all 10 headings.
+
+### SVG Overlap Fixes (ch02)
+- **Fig 2.4 top view center:** Split "dead"/"zone" two-line label into single "dead zone" label left of the center dot; "Base" label moved to right of dot. Both on same Y line, separated by the 10 px dot — no overlap.
+- **Fig 2.5 shoulder singularity:** Removed "Arm fully extended" subtitle that overlapped J5 circle top (only 1 px clearance). Title + vertical arm shape already communicate this.
+
+---
+
+## 2026-06-03 (session 2) — Chapter Summaries, Docker Intro, SO(3) Explanation, Singularity Section, SVG Overlap Fixes
+
+### All 10 Chapter Summaries Rewritten
+Every chapter summary (`callout-summary`) rewritten to lead with the chapter's **single biggest idea** rather than listing implementation details. Key changes:
+- Each summary now answers: "what is THIS chapter's most important insight, and why does it matter?"
+- Forward references added (e.g. ch02 summary notes Jacobian is used in ch06; ch03 notes sim-first rule applies through ch09)
+- Removed weak closing bullets like "your environment is installed — you are ready for Chapter 2"
+- Chapters: ch01 (layered stack + "never talk directly to motors"), ch02 (FK/IK as two-way translation), ch03 (simulate-first mandate + three-tool distinction), ch04 (planning pipeline separates your code from the 1 kHz PID), ch05 (Cartesian = task-level thinking), ch06 (velocity control = continuous loop not dispatch-and-wait), ch07 (impedance = programmable stiffness), ch08 (planning scene quality = plan quality), ch09 (hardware transition NOT just a parameter swap), ch10 (pick-and-place = integration of every prior chapter + FSM structure)
+
+### Docker "What is Docker?" Introduction
+- **ch01.html §1.4**: Added `callout-analogy` box before the "Which option?" decision box. Explains Docker in plain English: containerized Ubuntu laptop living inside your Mac, why ROS 2 needs it on macOS/Windows, and three key beginner facts (file sharing, ephemeral installs, XQuartz for GUIs).
+- **ch01 Key Terms**: Added `Docker` and `Container` definitions.
+- **ch01 Chapter Summary**: Added bullet mentioning Docker + XQuartz as the macOS/Windows path.
+
+### SO(3) Explained in ch05
+- Updated `.eq-note` under the SE(3) matrix to lead with a plain-English definition of SO(3): "the set of all valid 3D rotation matrices; R ∈ SO(3) means R is a legal rotation."
+- **ch05 Key Terms**: Added `SO(3)` and `SE(3)` entries.
+- Quaternion comparison table: replaced jargon "double cover of SO(3)" with a parenthetical explanation.
+
+### §2.6.2 Singularities — Full Rewrite
+- **ch02.html §2.6.2**: Replaced single vague paragraph with full explanation including:
+  - Concrete "pushing a door along its hinge" analogy (orange `callout-analogy`)
+  - Bullet list explaining exactly what motion is LOST for each singularity type (wrist: loses rotation about EEF z-axis; shoulder: loses radial translation)
+  - Explanation of what happens in practice (velocity spike → protective stop → MoveIt 2 avoids, DLS handles near-singular)
+- Warning callout condensed (no longer repeats the new explanation above it)
+
+### SVG Overlap Fixes
+- **ch02 Fig 2.5 — Wrist singularity**: Removed subtitle that overlapped J7 circle; replaced with smaller text "J5, J6, J7 axes aligned" positioned 14px above J7. Moved J5/J6/J7 circles down (J7: cy=52, J6: cy=68, J5: cy=88) to create 21px clearance from subtitle.
+- **ch02 Fig 2.5 — Shoulder singularity**: Moved EEF tag from overlapping the title to right side with dashed leader line (x=196, y=27). Fixed truncated "without J1,J2 racing" text → expanded box (88×70 px) with 5 shorter lines: "EEF can't move / sideways without / J1+J2 both / spinning fast".
+- **ch02 Fig 2.4 — Top view**: Moved Y-axis label from x=124,y=14 (overlapping title) to x=109,y=30,text-anchor="end" (left side of axis, clear of title).
+
+---
+
+## 2026-06-03 — Isaac Sim Intro, Math Annotations, Installation Fix, Code Bug Fix
+
+### Isaac Sim Introduction Added
+- **ch01.html §1.3**: Added `callout-note` "What about Isaac Sim?" after software stack layer descriptions. Explains Gazebo vs Isaac Sim trade-off (physics accuracy vs photorealistic rendering), GPU requirement, and forward reference to ch10 §10.6.
+- **ch03.html**: Added comparison paragraph in Gazebo intro section distinguishing Gazebo (physics, no GPU) from Isaac Sim (photorealistic, GPU required).
+
+### Math Formula Plain-English Annotations
+Added `.eq-note` class to `style.css` (italic, muted, left-bordered). Applied to every significant display math block:
+
+| Chapter | Formulas annotated |
+|---|---|
+| ch02 | Homogeneous transform T=[R,p;0,1] · FK chain T_EEF=T₁…T₇ · T₀→₂ composition · 4×4 DH matrix · Jacobian velocity v=Jq̇ |
+| ch05 | SE(3) pose matrix |
+| ch06 | PD control law v_cmd=Kp·e+Kd·ė · Trapezoidal profile t_acc=v_max/a_max · DLS pseudoinverse J⁺_DLS |
+| ch07 | Mass-spring-damper Mẍ+Bẋ+Kx=F_ext · Impedance Z(s)=Ms²+Bs+K · Joint impedance τ=Kp(q_d−q)+… · Cartesian impedance F_cmd=Kp(x_d−x)+… · Wrench-to-torque τ=JᵀF+τ_ff |
+
+### Installation Restructured (ch01.html §1.4)
+- Added **Option A — Docker** (recommended for macOS/Windows) before the Ubuntu steps, with copy-paste `docker pull` and `docker run` commands.
+- Existing Ubuntu Steps 1–3 relabeled as **Option B — Native Ubuntu 22.04**; all package names verified correct.
+- Step 1 heading clarified as "Ubuntu native only."
+
+### ch10 Code Bug Fix
+- Lines 582–585: gripper action topic was `/fr3_gripper/grasp` and `/fr3_gripper/move` (Franka Research 3 robot).
+- Fixed to `/franka_gripper/grasp` and `/franka_gripper/move` (correct namespace for Franka Panda).
+
+
+---
+
+## 2026-06-03 (Session 5) — franka_ros2 Launch Command Investigation & Fix
+
+### Problem Discovered
+The tutorial's §1.4 A6 launch commands referenced packages that no longer exist in the current franka_ros2 Humble branch:
+- `ros2 launch franka_gazebo panda.launch.py` — package `franka_gazebo` removed
+- `ros2 launch panda_moveit_config move_group.launch.py` — package `panda_moveit_config` removed
+
+The franka_ros2 Humble branch was refactored (≥ 2024) to primarily target the **FR3** (Franka Research 3) robot. The old Panda launch infrastructure was replaced.
+
+### Investigation (via Docker)
+Built franka_ros2 from source and inspected the actual available packages:
+
+| Package | Contains |
+|---|---|
+| `franka_gazebo_bringup` | `gazebo_franka_arm_example_controller.launch.py` (supports `robot_type:=fer/fr3/fp3`) |
+| `franka_fr3_moveit_config` | `move_group.launch.py` (FR3-targeted, usable with FER/Panda) |
+| `franka_bringup` | Real hardware launch files |
+
+Available robot types in `ros-humble-franka-description`:
+- `fer` — Franka Emika Robot (= classic Panda)
+- `fr3` — Franka Research 3 (default)
+- `fp3` — Franka Production 3
+- `fr3_duo`, `fr3v2` — newer variants
+
+### xacro Import Fix
+`import xacro` failed because the xacro Python module lives in `/opt/ros/humble/local/lib/python3.10/dist-packages/` which is only added to PYTHONPATH by `source /opt/ros/humble/setup.bash`. Always source setup.bash before any Python import test.
+
+### Tutorial Fix Applied (ch01.html §1.4 A6)
+Updated launch commands:
+```bash
+# Before (broken)
+ros2 launch franka_gazebo panda.launch.py
+ros2 launch panda_moveit_config move_group.launch.py
+
+# After (correct)
+ros2 launch franka_gazebo_bringup gazebo_franka_arm_example_controller.launch.py robot_type:=fer
+ros2 launch franka_fr3_moveit_config move_group.launch.py
+```
+Added explanatory callout-note: `robot_type:=fer` selects the classic Panda (FER = Franka Emika Robot).
+
+### Step 3 Build Note Added
+Added comment to colcon build command recommending `--parallel-workers 1 MAKEFLAGS="-j2"` for low-RAM systems (Docker default: 3.8 GB RAM → OOM-kill with default 8 workers).
