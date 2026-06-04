@@ -756,3 +756,51 @@ Shim source at `/tmp/shim_ws/src/franka_ign_ros2_control/` inside the container.
 | Ignition Gazebo simulation (headless, fr3) | ✓ |
 | Foxglove Studio viewer | ✓ |
 | Trajectory execution | ✗ (needs more RAM) |
+
+---
+
+## 2026-06-04 — Session 8: moveit_py Params & API Finalized
+
+### What Happened
+Continuation of session 7's moveit_py work. The end-to-end planning test was blocked by two issues that were diagnosed and fixed in this session.
+
+**Issue 1 — Wrong `planning_pipelines` param structure**
+`MoveItCpp::PlanningPipelineOptions::load()` reads `planning_pipelines.pipeline_names` (a dot-namespaced key), not a bare list under `planning_pipelines`. Previous YAML had:
+```yaml
+planning_pipelines:
+  - ompl          # WRONG — bare list
+```
+Fix:
+```yaml
+planning_pipelines:
+  pipeline_names:  # CORRECT — nested key
+    - ompl
+```
+
+**Issue 2 — YAML aliasing rejected by rcl**
+Python's `yaml.dump` creates YAML anchors (`&id001`) when the same dict is referenced twice. `rcl` params parser rejects anchored YAML with `"Will not support aliasing"`. Fix: custom `NoAliasDumper`:
+```python
+class NoAliasDumper(yaml.Dumper):
+    def ignore_aliases(self, data): return True
+yaml.dump(params, f, Dumper=NoAliasDumper)
+```
+
+**Issue 3 — `PlanRequestParameters` constructor**
+Takes only one argument (`MoveItCpp` instance); pipeline name is set as an attribute:
+```python
+p = PlanRequestParameters(moveit)
+p.planning_pipeline = 'ompl'   # NOT: PlanRequestParameters(moveit, 'ompl')
+```
+
+### Final Result
+```
+rclpy initialized
+MoveItPy instantiated OK
+Robot model: fr3
+Planning with OMPL/RRTConnect...
+SUCCESS: plan returned ✓
+```
+
+### Outstanding
+- Trajectory execution (plan + execute to Gazebo controller) — needs Docker RAM > 3.8 GB
+- All `/tmp/` build artifacts (moveit_py_ws, shim_ws) are volatile — lost if container is removed
