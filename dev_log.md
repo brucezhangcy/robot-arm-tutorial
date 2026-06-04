@@ -507,3 +507,252 @@ Added explanatory callout-note: `robot_type:=fer` selects the classic Panda (FER
 
 ### Step 3 Build Note Added
 Added comment to colcon build command recommending `--parallel-workers 1 MAKEFLAGS="-j2"` for low-RAM systems (Docker default: 3.8 GB RAM → OOM-kill with default 8 workers).
+
+---
+
+## 2026-06-03 (Session 6) — Headless Simulation via Docker + Foxglove
+
+### Goal
+Run the tutorial simulation on macOS (Apple Silicon) without a GUI, using Docker + Foxglove Studio in the browser as the viewer.
+
+### What Blocks Full Gazebo Simulation
+- Gazebo and RViz use the OGRE 3D renderer which requires hardware OpenGL (GLX)
+- Docker on Apple Silicon (Rosetta 2) has no GPU passthrough → no hardware GLX
+- XQuartz provides X11 but not hardware-accelerated GLX → OGRE crashes before Mesa fallback
+- `LIBGL_ALWAYS_SOFTWARE=1` does not help — OGRE fails before reaching Mesa
+
+### Approach Tried: Headless Gazebo (franka_gazebo_bringup)
+Launched `gazebo_franka_arm_example_controller.launch.py robot_type:=fer gz_args:='-r -s empty.sdf' rviz:=false`.
+
+**Result:** Robot description loaded (all 9 fer_link* segments), robot spawned in Ignition Gazebo 6 — but `controller_manager` service never came up because `franka_ign_ros2_control/IgnitionSystem` plugin (the Gazebo-side ros2_control hardware interface) was never built. It is not in the `franka_ros2` source tree and not available via apt.
+
+### Approach That Works: Fake Hardware + MoveIt 2 + Foxglove
+Skipped Gazebo entirely. Used the `franka_fr3_moveit_config` built-in fake hardware mode:
+
+```bash
+ros2 launch franka_fr3_moveit_config moveit.launch.py \
+  robot_ip:=dont-care \
+  use_fake_hardware:=true \
+  fake_sensor_commands:=true
+```
+
+**Key lesson:** Must run this launch file standalone. Running it alongside a separate `franka_bringup` launch creates joint-name conflicts (`fer_joint*` vs `fr3_joint*`) that crash `move_group`.
+
+**What comes up:**
+- `controller_manager` at 1000 Hz ✓
+- `fr3_arm_controller` (JointTrajectoryController) ✓
+- `joint_state_broadcaster` ✓
+- `move_group` with OMPL ✓
+- RViz crashes (expected — no GLX) but everything else runs
+
+### Packages Required (all via apt)
+```bash
+ros-humble-ros-gz          # Ignition Gazebo + ROS bridge
+ros-humble-ros2-control
+ros-humble-ros2-controllers
+ros-humble-ign-ros2-control
+ros-humble-franka-description
+ros-humble-xacro
+ros-humble-moveit
+ros-humble-foxglove-bridge
+```
+
+### Verified Working
+| Check | Result |
+|---|---|
+| FK at home pose (q=[0,-0.785,0,-2.356,0,1.571,0.785]) | EEF at x=0.307m, z=0.590m ✓ |
+| MoveGroup action plan to home config | SUCCESS: 3 waypoints, 0.175s ✓ |
+| Foxglove bridge on port 8765 | 25 channels advertised, port open ✓ |
+| `/joint_states` topic | Live ✓ |
+| `/planning_scene`, `/display_planned_path` | Live ✓ |
+
+### Not Verified
+- `moveit_py` Python API (`from moveit.planning import MoveItPy`) — not in apt for Humble, needs source build
+- Gazebo 3D physics simulation — blocked by GLX on Apple Silicon
+- Actual trajectory execution (plan + execute, not just plan)
+
+### Foxglove Viewer (browser-based, no install)
+With Docker running, open `https://foxglove.dev/app` → Open connection → WebSocket → `ws://localhost:8765`. Shows live joint states, TF tree, planning scene, and planned trajectories.
+
+### Outstanding Missing Piece
+`franka_ign_ros2_control` needs to be cloned and built to enable Gazebo simulation. It is not in `dependency.repos` and not on apt. Source: unknown — not listed in any franka_ros2 documentation found. Likely at `github.com/frankarobotics/franka_ign_ros2_control` but unconfirmed.
+
+---
+
+## 2026-06-03 — Session 7: moveit_py API Validated + Gazebo Simulation Running
+
+### Summary
+Two objectives were completed in this session:
+1. **moveit_py API end-to-end** — built from source (pybind11 C++ bindings), fixed all API errors, got a confirmed `SUCCESS` plan using OMPL/RRTConnect.
+2. **Gazebo simulation** — headless fr3 robot running in Ignition Gazebo Fortress; live `/joint_states` from physics; `joint_state_broadcaster` and `fr3_arm_controller` active.
+
+---
+
+### Task 1 — moveit_py End-to-End API Validation
+
+#### Build
+- Source: `moveit2` GitHub `humble` branch, `moveit_py/` subdirectory only
+- Build path: `/tmp/moveit_py_ws/` inside Docker container `panda_sim`
+- Build strategy (OOM avoidance on 3.8 GB Docker RAM):
+  ```bash
+  cd /tmp/moveit_py_ws/build/moveit_py
+  cmake --build . --target core -- -j1     # ~2 GB RAM peak
+  cmake --build . --target planning -- -j1  # ~2 GB RAM peak
+  cmake --build . --target install -- -j1
+  cd /tmp/moveit_py_ws && colcon build      # finalizes in ~1.5s
+  ```
+- Required flag: `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF` (disables LTO which conflicts with `-j1` jobserver)
+- Import verified: `from moveit.planning import MoveItPy` → `<class 'moveit.planning.MoveItPy'>` ✓
+
+#### Parameters Required (the hard part)
+`MoveItPy()` needs `robot_description`, `robot_description_semantic`, kinematics, and pipeline config as ROS 2 node parameters. Fix: generate a `params.yaml` file and pass via `--ros-args --params-file`.
+
+Key structural facts discovered from `moveit_cpp.h`:
+- Planning pipeline list: `planning_pipelines.pipeline_names: [ompl]` (NOT `planning_pipelines: [ompl]`)
+- OMPL plugin: `ompl.planning_plugin: ompl_interface/OMPLPlanner`
+- OMPL adapters: `ompl.request_adapters: "default_planner_request_adapters/..."` (space-separated)
+- Kinematics: `robot_description_kinematics.fr3_arm.kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin`
+
+Generation script (runs inside container):
+```bash
+python3 << 'PYEOF'
+import yaml, copy, subprocess
+
+# Generate URDF and SRDF from xacro
+urdf = subprocess.check_output(["xacro",
+    "/opt/ros/humble/share/franka_description/robots/fr3/fr3.urdf.xacro",
+    "hand:=true", "robot_ip:=dont-care", "ee_id:=franka_hand",
+    "use_fake_hardware:=true", "fake_sensor_commands:=false", "ros2_control:=true"
+]).decode()
+srdf = subprocess.check_output(["xacro",
+    "/opt/ros/humble/share/franka_description/robots/fr3/fr3.srdf.xacro",
+    "hand:=true", "ee_id:=franka_hand"
+]).decode()
+
+with open('/panda_ws/install/franka_fr3_moveit_config/share/franka_fr3_moveit_config/config/ompl_planning.yaml') as f:
+    ompl_yaml = yaml.safe_load(f)
+
+ompl_pipeline = {
+    'planning_plugin': 'ompl_interface/OMPLPlanner',
+    'request_adapters': ('default_planner_request_adapters/AddTimeOptimalParameterization '
+        'default_planner_request_adapters/ResolveConstraintFrames '
+        'default_planner_request_adapters/FixWorkspaceBounds '
+        'default_planner_request_adapters/FixStartStateBounds '
+        'default_planner_request_adapters/FixStartStateCollision '
+        'default_planner_request_adapters/FixStartStatePathConstraints'),
+    'start_state_max_bounds_error': 0.1,
+}
+ompl_pipeline.update(copy.deepcopy(ompl_yaml))
+ompl_pipeline['fr3_arm'] = copy.deepcopy(ompl_yaml.get('panda_arm', {}))
+
+params = {'moveit_py_test': {'ros__parameters': {
+    'robot_description': urdf,
+    'robot_description_semantic': srdf,
+    'robot_description_kinematics': {
+        'fr3_arm': {'kinematics_solver': 'kdl_kinematics_plugin/KDLKinematicsPlugin',
+                    'kinematics_solver_search_resolution': 0.005,
+                    'kinematics_solver_timeout': 0.005}},
+    'planning_pipelines': {'pipeline_names': ['ompl']},
+    'default_planning_pipeline': 'ompl',
+    'ompl': ompl_pipeline,
+}}}
+
+class NoAlias(yaml.Dumper):
+    def ignore_aliases(self, data): return True
+
+with open('/tmp/moveit_py_params.yaml', 'w') as f:
+    yaml.dump(params, f, default_flow_style=False, Dumper=NoAlias)
+PYEOF
+```
+
+#### API Corrections Found
+| Wrong | Correct |
+|---|---|
+| `robot_model.joint_model_group('fr3_arm')` | `next(g for g in robot_model.joint_model_groups if g.name=='fr3_arm')` |
+| `PlanRequestParameters(moveit, 'ompl')` | `p = PlanRequestParameters(moveit); p.planning_pipeline = 'ompl'` |
+| `traj.joint_trajectory.points` | `traj.get_waypoint_durations()`, `traj.duration` |
+
+#### Working Test Script
+```python
+# /tmp/test_moveit_py4.py  (run with --ros-args --params-file /tmp/moveit_py_params.yaml)
+import rclpy, sys
+from moveit.planning import MoveItPy, PlanRequestParameters
+from moveit.core.robot_state import RobotState
+
+rclpy.init()
+moveit = MoveItPy(node_name='moveit_py_test')
+rm = moveit.get_robot_model()   # → fr3
+jmg = next(g for g in rm.joint_model_groups if g.name == 'fr3_arm')
+arm = moveit.get_planning_component('fr3_arm')
+rs = RobotState(rm)
+rs.set_to_default_values(jmg, 'ready')
+arm.set_start_state_to_current_state()
+arm.set_goal_state(robot_state=rs)
+plan_params = PlanRequestParameters(moveit)
+plan_params.planning_pipeline = 'ompl'
+plan_params.planner_id = 'RRTConnectkConfigDefault'
+plan_params.planning_time = 5.0
+plan_params.planning_attempts = 3
+result = arm.plan(plan_params)
+# → SUCCESS: plan returned ✓
+```
+
+#### To Run
+```bash
+docker exec panda_sim bash -c "
+source /opt/ros/humble/setup.bash
+source /panda_ws/install/setup.bash
+source /tmp/moveit_py_ws/install/setup.bash
+python3 /tmp/test_moveit_py4.py --ros-args --params-file /tmp/moveit_py_params.yaml
+"
+```
+**Note:** `/tmp/` build artifacts are in Docker overlay filesystem — persist as long as container runs but lost on full container removal. Container name: `panda_sim`.
+
+---
+
+### Task 2 — Gazebo Simulation
+
+#### Status
+Running successfully with `robot_type:=fr3` in headless mode. Key command:
+```bash
+ros2 launch franka_gazebo_bringup gazebo_franka_arm_example_controller.launch.py \
+  robot_type:=fr3 gz_args:='-r -s empty.sdf' rviz:=false controller:=joint_state_broadcaster
+```
+Sources: `source /opt/ros/humble/setup.bash && source /panda_ws/install/setup.bash && source /tmp/shim_ws/install/setup.bash`
+
+#### franka_ign_ros2_control Shim (solves missing plugin)
+The package `franka_ign_ros2_control` is not on apt or GitHub. Solved via a shim package that:
+1. Registers `franka_ign_ros2_control/IgnitionSystem` as an alias for `ign_ros2_control/IgnitionSystem` (pluginlib)
+2. Creates a symlink for the Ignition system plugin: `libfranka_ign_ros2_control-system.so → libign_ros2_control-system.so`
+
+Shim source at `/tmp/shim_ws/src/franka_ign_ros2_control/` inside the container.
+
+`fer_link4 invalid inertia` issue (FER robot type) avoided by using `robot_type:=fr3`.
+
+#### Verified Working
+| Check | Result |
+|---|---|
+| Ignition Gazebo headless launch | ✓ |
+| `controller_manager` active at 1000 Hz | ✓ |
+| `joint_state_broadcaster` spawned | ✓ |
+| `/joint_states` publishing live physics data | ✓ |
+| `fr3_arm_controller` (JointTrajectoryController) | ✓ |
+| Foxglove bridge 25 channels incl. joint_states | ✓ |
+
+#### Still Not Verified
+- Gazebo + MoveIt 2 simultaneously — container hits 3.8 GB Docker RAM limit and OOM-kills
+- Actual trajectory execution (plan + send to Gazebo controller) — requires running both simultaneously
+
+---
+
+### Session 7 — Cumulative Verified Stack
+| Component | Status |
+|---|---|
+| ROS 2 Humble | ✓ |
+| franka_ros2 (fr3) | ✓ |
+| MoveIt 2 (`move_group`) | ✓ |
+| MoveGroup action planning | ✓ (3 waypoints, 0.175s) |
+| moveit_py Python bindings | ✓ (import + MoveItPy() + OMPL plan) |
+| Ignition Gazebo simulation (headless, fr3) | ✓ |
+| Foxglove Studio viewer | ✓ |
+| Trajectory execution | ✗ (needs more RAM) |
