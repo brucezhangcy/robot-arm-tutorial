@@ -804,3 +804,62 @@ SUCCESS: plan returned ✓
 ### Outstanding
 - Trajectory execution (plan + execute to Gazebo controller) — needs Docker RAM > 3.8 GB
 - All `/tmp/` build artifacts (moveit_py_ws, shim_ws) are volatile — lost if container is removed
+
+---
+
+## 2026-06-07 — Session 9: Ch.10 Isaac Sim Code Updated to 5.0 API
+
+### Context
+A separate machine (Ubuntu 22.04, 4× RTX 6000 Ada, no ROS 2) ran the ch10 Isaac Sim code and hit failures. Fixes were identified by that session and handed off for integration into ch10.html.
+
+### Environment (remote machine)
+- No ROS 2 — `pick_and_place.py` (§10.5) is not runnable there; no edits needed, Python is correct.
+- Isaac Sim 5.0.0 in conda env `/data/bruce/envs/isaaclab` (Python 3.11).
+- Multi-GPU machine; GPUs 1–3 typically occupied → must pin to GPU 0.
+
+### Bugs Fixed in ch10.html
+
+**B1 — Import renames (Isaac Sim 2.x → 5.0)**
+The old `omni.isaac.*` package tree does not exist in Isaac Sim 5.0. All four imports in `scene_setup.py` were renamed:
+
+| Old (2.x) | New (5.0) |
+|---|---|
+| `from omni.isaac.kit import SimulationApp` | `from isaacsim import SimulationApp` |
+| `from omni.isaac.core import World` | `from isaacsim.core.api import World` |
+| `from omni.isaac.franka import Franka` | `from isaacsim.robot.manipulators.examples.franka import Franka` |
+| `from omni.isaac.core.objects import DynamicCuboid` | `from isaacsim.core.api.objects import DynamicCuboid` |
+
+**B2 — EULA + GPU pinning**
+Without `OMNI_KIT_ACCEPT_EULA=YES` the app hangs waiting for interactive input. Without GPU pinning it crashes with `ERROR_OUT_OF_DEVICE_MEMORY` on a busy multi-GPU node.
+```python
+os.environ["OMNI_KIT_ACCEPT_EULA"] = "YES"
+simulation_app = SimulationApp({
+    "headless": True, "active_gpu": 0, "physics_gpu": 0, "multi_gpu": False,
+})
+```
+
+**B3 — Missing ground plane**
+`scene_setup.py` never added a floor. The `DynamicCuboid` fell through space indefinitely. Fix: one line after `World()`:
+```python
+world.scene.add_default_ground_plane()
+```
+
+**B4 — Joint-vector shape mismatch in `move_to_joints`**
+`robot.get_joint_positions()` returns **9 values** (7 arm + 2 fingers). The tutorial's `target = np.array(target_joints)` is only 7 values → NumPy broadcast error on `current + t*(target-current)`. Fix: copy current state, overwrite only arm joints:
+```python
+current = np.array(robot.get_joint_positions(), dtype=float)
+target  = current.copy()
+target[:7] = np.array(target_joints)
+```
+
+### Also Updated
+- §10.6.1 "What You Need": Isaac Sim 4.x → **5.0**, Python 3.10 → **3.11**
+- §10.6.2 intro: mention headless server path alongside Script Editor path
+- Added callout after `replay_trajectory.py` with the terminal run command:
+  ```bash
+  OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
+    /path/to/isaaclab/bin/python scene_setup.py
+  ```
+
+### Known Limitation (not fixed, noted in handoff)
+Hardcoded `GRASP_JOINTS` don't place the gripper exactly on the cube at `[0.5, 0, 0.025]`. `set_joint_positions` is a kinematic teleport (no contact forces), so the cube is not physically picked up — the arm moves through the sequence but the cube stays. This matches the tutorial intent; a physics-accurate grasp would require IK-tuned joint targets and prim attachment on gripper close.
