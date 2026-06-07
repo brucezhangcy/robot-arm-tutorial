@@ -783,8 +783,8 @@ if __name__ == '__main__':
       <h3>10.6.1 What You Need</h3>
       <ul>
         <li><strong>GPU:</strong> NVIDIA RTX 20xx or newer (ray-tracing hardware is required for photorealistic mode)</li>
-        <li><strong>Isaac Sim 4.x:</strong> Free download from NVIDIA — search "Isaac Sim" on developer.nvidia.com and install via the Omniverse Launcher</li>
-        <li><strong>Python 3.10:</strong> Isaac Sim ships its own Python environment; you run scripts inside it</li>
+        <li><strong>Isaac Sim 5.0:</strong> Free download from NVIDIA — search "Isaac Sim" on developer.nvidia.com and install via the Omniverse Launcher. These examples use the <strong>Isaac Sim 5.0</strong> API (<code>isaacsim.*</code> package paths).</li>
+        <li><strong>Python 3.11:</strong> Isaac Sim 5.0 ships with Python 3.11 in its conda environment; you run scripts inside it</li>
         <li><strong>Disk space:</strong> ~30 GB for Isaac Sim + assets</li>
       </ul>
 
@@ -796,8 +796,10 @@ if __name__ == '__main__':
 
       <p>
         Isaac Sim includes a built-in Franka Panda asset. The code below creates a simulation
-        world, loads the robot, adds a red cube, and starts the physics engine. Run it in
-        Isaac Sim's built-in <strong>Script Editor</strong> (menu: Window → Script Editor).
+        world, loads the robot, adds a red cube, and starts the physics engine. On a desktop
+        with a display, run it in Isaac Sim's built-in <strong>Script Editor</strong>
+        (menu: Window → Script Editor). On a headless server, run it directly from the terminal
+        using the run command shown at the end of this section.
       </p>
 
       <p>
@@ -813,17 +815,33 @@ if __name__ == '__main__':
         <span>scene_setup.py — run in Isaac Sim Script Editor</span>
       </div>
       <pre><code class="language-python">
-# Step 1: Create the simulation app (opens the Isaac Sim window)
-from omni.isaac.kit import SimulationApp
-simulation_app = SimulationApp({"headless": False})  # headless=True for no GUI
-
+import os
 import numpy as np
-from omni.isaac.core import World
-from omni.isaac.franka import Franka
-from omni.isaac.core.objects import DynamicCuboid
+
+# Accept the EULA non-interactively (required before importing isaacsim)
+os.environ["OMNI_KIT_ACCEPT_EULA"] = "YES"
+
+# Step 1: Create the simulation app
+# headless=True  → no GUI window (works on servers / Docker)
+# active_gpu/physics_gpu → pin to GPU 0 to avoid OOM if other GPUs are busy
+from isaacsim import SimulationApp
+simulation_app = SimulationApp({
+    "headless": True,
+    "active_gpu": 0,
+    "physics_gpu": 0,
+    "multi_gpu": False,
+})
+
+# Isaac Sim 5.0 uses isaacsim.* package paths (replaces omni.isaac.* from 2.x)
+from isaacsim.core.api import World
+from isaacsim.robot.manipulators.examples.franka import Franka
+from isaacsim.core.api.objects import DynamicCuboid
 
 # ── Create the world ─────────────────────────────────────
 world = World(stage_units_in_meters=1.0)   # 1 unit = 1 metre
+
+# ── Add a ground plane so the cube doesn't free-fall ─────
+world.scene.add_default_ground_plane()
 
 # ── Add the Franka Panda robot ────────────────────────────
 # Isaac Sim knows the Panda URDF; just give it a scene path
@@ -881,6 +899,7 @@ for _ in range(50):
       </div>
       <pre><code class="language-python">
 # Joint configurations matching the §10.5 pick-and-place poses
+# (7 arm joints only — fingers are handled separately)
 HOME_JOINTS      = [0.0, -0.785, 0.0, -2.356, 0.0,  1.571, 0.785]
 PRE_GRASP_JOINTS = [0.0,  0.200, 0.0, -2.000, 0.0,  2.200, 0.785]
 GRASP_JOINTS     = [0.0,  0.350, 0.0, -1.850, 0.0,  2.200, 0.785]
@@ -891,9 +910,13 @@ def move_to_joints(robot, target_joints, steps=120):
     Smoothly interpolate from the current joint positions to the target.
     'steps' controls how many physics frames the motion takes.
     120 steps ≈ 2 seconds at 60 Hz rendering.
+
+    Note: get_joint_positions() returns 9 values (7 arm + 2 fingers).
+    We only overwrite the first 7 (arm joints) to avoid a shape mismatch.
     """
-    current = robot.get_joint_positions()
-    target  = np.array(target_joints)
+    current = np.array(robot.get_joint_positions(), dtype=float)
+    target  = current.copy()
+    target[:7] = np.array(target_joints)   # overwrite arm joints only
     for i in range(steps):
         t = (i + 1) / steps          # goes from 1/steps to 1.0
         interpolated = current + t * (target - current)
@@ -930,6 +953,20 @@ move_to_joints(robot, HOME_JOINTS)
 
 print("Sequence complete!")
 </code></pre>
+
+      <div class="callout callout-tip">
+        <strong>Running from the terminal (headless servers):</strong> If you are on a machine
+        without a display — a remote GPU server, Docker container, or university cluster — run
+        both scripts directly from the terminal using Isaac Sim's bundled Python:
+        <pre style="margin-top:0.5rem"><code class="language-bash">OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
+  /path/to/isaaclab/bin/python scene_setup.py
+OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
+  /path/to/isaaclab/bin/python replay_trajectory.py</code></pre>
+        Replace <code>/path/to/isaaclab/bin/python</code> with the actual path to the Python
+        interpreter inside your Isaac Sim conda environment.
+        <code>CUDA_VISIBLE_DEVICES=0</code> pins execution to GPU 0, which is important on
+        multi-GPU machines where other GPUs may already be full.
+      </div>
 
       <h3>10.6.4 What to Observe</h3>
 
