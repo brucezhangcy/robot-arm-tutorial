@@ -493,6 +493,25 @@
 
       <p>Before running this code, make sure the simulation stack is running (see §3.5). In simulation: start with <code>launch_sim.sh</code>. On real hardware: follow the four-terminal sequence from §9.4. Then run <code>pick_and_place.py</code> in a separate terminal with your workspace sourced.</p>
 
+      <div class="callout callout-warning">
+        <strong>Dependency note — this node does not run on ROS&nbsp;2 Humble out of the box.</strong>
+        The code uses two packages that are <em>not</em> co-available on any single Ubuntu&nbsp;22.04
+        ROS&nbsp;2 distro via <code>apt</code>:
+        <ul style="margin:0.4rem 0 0.4rem 1.1rem;">
+          <li><code>moveit_py</code> (the <code>from moveit.planning import MoveItPy</code> binding)
+            is packaged for <strong>Iron / Jazzy / Rolling</strong> but <strong>not Humble</strong>.</li>
+          <li><code>franka_msgs</code> (the <code>Grasp</code> / <code>Move</code> gripper actions)
+            is packaged for <strong>Humble</strong> but <strong>not Iron</strong>.</li>
+        </ul>
+        To run it: use <strong>Iron or Jazzy</strong> for <code>moveit_py</code> and
+        <strong>build <code>franka_msgs</code> from source</strong> there
+        (<code>colcon build --packages-select franka_msgs</code> from
+        <code>frankaemika/franka_ros2</code>) — or stay on Humble and build <code>moveit_py</code>
+        from source. In simulation there is also no <code>/franka_gripper</code> action server
+        unless the franka_ros2 gripper stack is running, so the two gripper calls need either that
+        stack or stand-in action servers. See the project README for the full explanation.
+      </div>
+
       <p>
         The code below is the complete pick-and-place node. Read it in sections: the task
         parameters at the top are the only numbers you need to change for a different object

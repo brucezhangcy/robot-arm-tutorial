@@ -56,6 +56,22 @@ Requires an internet connection for CDN resources. Works in any modern browser (
 
 The tutorial targets **ROS 2 Humble** on **Ubuntu 22.04**.
 
+> ⚠️ **Important — Chapter 10 Python capstone dependency conflict.**
+> The Ch. 10 `pick_and_place.py` uses the **`moveit_py`** Python binding
+> (`from moveit.planning import MoveItPy`). As of this writing `moveit_py` is **not
+> released for Humble** via apt — it is only packaged for **Iron / Jazzy / Rolling**
+> (`ros-<distro>-moveit-py`). Conversely, **`franka_msgs`** (used by the gripper
+> actions) is packaged for **Humble but not Iron**. So **no single ROS 2 distro on
+> Ubuntu 22.04 apt-satisfies both** `moveit_py` and `franka_msgs` at once.
+> To actually run the Ch. 10 Python capstone you must either:
+> - use **Iron or Jazzy** (which have `moveit_py`) and **build `franka_msgs` from
+>   source** (it is an interface-only package — clone `frankaemika/franka_ros2` and
+>   `colcon build --packages-select franka_msgs`), or
+> - stay on **Humble** and **build `moveit_py` from source**.
+>
+> The other chapters (1–9), which use the C++ `move_group` / `ros2 launch` workflow,
+> are fine on Humble as written.
+
 ### Option A — Docker (recommended for macOS / Windows)
 
 ```bash
