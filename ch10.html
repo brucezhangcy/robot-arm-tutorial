@@ -746,6 +746,26 @@ if __name__ == '__main__':
     main()</code></pre>
 
       <div class="callout callout-warning">
+        <strong>moveit_py API corrections.</strong> The listing above was written against a mix of the
+        older <code>moveit_commander</code> API and <code>moveit_py</code>; three lines do not work as
+        written on a real <code>moveit_py</code> stack (verified on ROS&nbsp;2 Iron):
+        <ul style="margin:0.4rem 0 0.4rem 1.1rem;">
+          <li><code>import moveit_py</code> and <code>moveit_py.MoveItPy(...)</code> &mdash; there is no
+            Python module named <code>moveit_py</code>. Drop that import and construct the class from the
+            line you already have: <code>from moveit.planning import MoveItPy</code> → <code>MoveItPy(node_name=…)</code>.
+            MoveItPy also needs its config: <code>MoveItPy(node_name='moveit_py', launch_params_filepath='moveit_params.yaml')</code>.</li>
+          <li><code>self.arm.compute_cartesian_path(...)</code> &mdash; <code>PlanningComponent</code> has no
+            such method in <code>moveit_py</code>. For a straight-line Cartesian move, plan to the goal
+            pose with the <strong>Pilz LIN</strong> planner instead
+            (<code>planning_pipeline="pilz_industrial_motion_planner"</code>, <code>planner_id="LIN"</code>).</li>
+          <li>Pilz LIN requires the goal pose in the robot <em>model</em> frame
+            (<code>world</code>), not <code>panda_link0</code>.</li>
+        </ul>
+        A corrected, runnable version (with stand-in gripper servers and an RViz launch) is described in
+        the project's evaluation notes.
+      </div>
+
+      <div class="callout callout-warning">
         <strong>Before running on real hardware:</strong>
         complete the Chapter&nbsp;9 safety checklist, set <code>VEL_SCALE = 0.05</code>
         for the first run, and keep your hand on the E-stop. Increase speed only after
