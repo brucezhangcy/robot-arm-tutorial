@@ -954,18 +954,30 @@ move_to_joints(robot, HOME_JOINTS)
 print("Sequence complete!")
 </code></pre>
 
+      <div class="callout callout-warning">
+        <strong>One Python session, not two:</strong> the two listings above are written to run as
+        <em>consecutive cells in the same Script Editor session</em> — <code>replay_trajectory.py</code>
+        reuses the <code>np</code>, <code>world</code>, and <code>robot</code> objects created by
+        <code>scene_setup.py</code>. It is not a self-contained program. If you run it as a separate
+        process (<code>python replay_trajectory.py</code>) it will fail with
+        <code>NameError: name 'robot' is not defined</code>, because a fresh process has none of those
+        objects. In the GUI, just paste both cells into the Script Editor and run them in order.
+      </div>
+
       <div class="callout callout-tip">
         <strong>Running from the terminal (headless servers):</strong> If you are on a machine
-        without a display — a remote GPU server, Docker container, or university cluster — run
-        both scripts directly from the terminal using Isaac Sim's bundled Python:
+        without a display — a remote GPU server, Docker container, or university cluster — there is no
+        Script Editor, so combine the two listings into a <strong>single file</strong> and run that one
+        file. Concatenate them in order (everything from <code>scene_setup.py</code> first, then the
+        body of <code>replay_trajectory.py</code>) into, say, <code>pick_and_place_isaac.py</code>, then
+        launch it with Isaac Sim's bundled Python:
         <pre style="margin-top:0.5rem"><code class="language-bash">OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
-  /path/to/isaaclab/bin/python scene_setup.py
-OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
-  /path/to/isaaclab/bin/python replay_trajectory.py</code></pre>
+  /path/to/isaaclab/bin/python pick_and_place_isaac.py</code></pre>
         Replace <code>/path/to/isaaclab/bin/python</code> with the actual path to the Python
         interpreter inside your Isaac Sim conda environment.
         <code>CUDA_VISIBLE_DEVICES=0</code> pins execution to GPU 0, which is important on
-        multi-GPU machines where other GPUs may already be full.
+        multi-GPU machines where other GPUs may already be full. (Running the two listings as two
+        separate <code>python</code> commands will <em>not</em> work — see the note above.)
       </div>
 
       <h3>10.6.4 What to Observe</h3>

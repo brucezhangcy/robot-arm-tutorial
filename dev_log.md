@@ -863,3 +863,30 @@ target[:7] = np.array(target_joints)
 
 ### Known Limitation (not fixed, noted in handoff)
 Hardcoded `GRASP_JOINTS` don't place the gripper exactly on the cube at `[0.5, 0, 0.025]`. `set_joint_positions` is a kinematic teleport (no contact forces), so the cube is not physically picked up — the arm moves through the sequence but the cube stays. This matches the tutorial intent; a physics-accurate grasp would require IK-tuned joint targets and prim attachment on gripper close.
+
+---
+
+## 2026-06-07 — Session 10: Fix headless run instructions (two-process bug)
+
+### Problem
+The Session 9 callout told headless users to run the §10.6 code as two separate processes:
+```bash
+python scene_setup.py
+python replay_trajectory.py
+```
+But `replay_trajectory.py` is not self-contained — it reuses `np`, `world`, and `robot` created in `scene_setup.py`. The two listings were only ever meant to run as consecutive **cells in the same Script Editor session** (shared namespace). Run as a second process it fails immediately:
+```
+NameError: name 'robot' is not defined
+```
+Verified by extracting the listing and running it standalone.
+
+### Fix (ch10.html §10.6.3)
+- Added a `callout-warning` stating the two listings share one Python session and are not standalone programs.
+- Rewrote the headless `callout-tip`: for terminal/headless use, concatenate both listings into a **single file** (`pick_and_place_isaac.py`) and run that one file:
+  ```bash
+  OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
+    /path/to/isaaclab/bin/python pick_and_place_isaac.py
+  ```
+- The GUI Script Editor path (paste both cells, run in order) is unchanged and still correct.
+
+No code logic changed — only the run instructions and an explanatory note.
