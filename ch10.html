@@ -79,10 +79,10 @@
         <dt>State</dt><dd>One step in the FSM; each state does exactly one thing and then checks whether to continue or report an error.</dd>
         <dt>Transition</dt><dd>The switch from one FSM state to another, triggered by a condition such as "gripper is closed AND object is detected."</dd>
         <dt>Pre-grasp pose</dt><dd>A pose above the object, reached before the Cartesian descent; ensures the arm approaches from above and does not knock the object sideways.</dd>
-        <dt>Cartesian descent</dt><dd>A straight downward movement in Cartesian space (constant x and y, decreasing z) from the pre-grasp pose to the grasp pose, computed by <code>compute_cartesian_path</code>.</dd>
+        <dt>Cartesian descent</dt><dd>A straight downward movement in Cartesian space (constant x and y, decreasing z) from the pre-grasp pose to the grasp pose, computed by the Pilz LIN planner.</dd>
         <dt>Cartesian straight-line path</dt><dd>A path in which the end-effector moves in a straight line in Cartesian space; critical for vertical pick-and-place descents to avoid dragging the object sideways.</dd>
         <dt>Grasp action</dt><dd>The franka_gripper action that closes the fingers to a target width with a target force and confirms whether an object was gripped.</dd>
-        <dt>Path fraction</dt><dd>The proportion of the requested Cartesian waypoints that could be reached collision-free; a fraction below the threshold (e.g., 0.95) causes the move to be aborted.</dd>
+        <dt>Pilz LIN</dt><dd>A MoveIt 2 planning plugin that produces guaranteed straight-line end-effector motion in Cartesian space. Used here for descend, lift, transport, place, and retract moves.</dd>
         <dt>Retract pose</dt><dd>A pose above the place location, reached after releasing the object; lifts the gripper clear before the final return-to-home move.</dd>
         <dt>Node graph</dt><dd>A diagram showing all the ROS 2 nodes active during the task and the topics/services/actions connecting them.</dd>
       </dl>
@@ -112,7 +112,7 @@
 
       <p>
         Each of those steps draws on a specific skill from an earlier chapter: steps 3,
-        5, 6, and 7 use the <code>compute_cartesian_path</code> technique from
+        5, 6, and 7 use the Pilz LIN planner for straight-line Cartesian motion from
         Chapter&nbsp;5; steps 4 and 8 use the gripper action interface first seen in
         Chapter&nbsp;8's deep dive; and step 2 relies on the joint-space planner from
         Chapter&nbsp;4 to reach the pre-grasp pose without constraining the path.
@@ -473,8 +473,7 @@
 
       <p>
         The critical design choice: <strong>all vertical and horizontal segments are
-        Cartesian straight-lines</strong> (computed with <code>compute_cartesian_path</code>
-        from Chapter&nbsp;5). This ensures the object moves in a predictable path — important
+        Cartesian straight-lines</strong> (using the Pilz LIN planner from Chapter&nbsp;5). This ensures the object moves in a predictable path — important
         when working near other objects on a cluttered table. Why does this matter? Recall
         from Chapter&nbsp;5 that an OMPL-planned path moves through joint space and the
         end-effector traces a curved arc in Cartesian space. If you are holding a fragile
@@ -538,7 +537,6 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped
-import moveit_py
 from moveit.planning import MoveItPy, PlanRequestParameters
 from franka_msgs.action import Grasp, Move as GripperMove
 
@@ -556,8 +554,7 @@ GRIPPER_FORCE       = 40.0   # N
 
 VEL_SCALE  = 0.25
 ACC_SCALE  = 0.10
-CART_STEP  = 0.005   # m — interpolation step for Cartesian paths
-MIN_FRAC   = 0.95    # minimum fraction for compute_cartesian_path
+CART_STEP  = 0.005   # m — max step size passed to Pilz LIN planner
 
 
 class State(enum.Enum):
@@ -579,7 +576,7 @@ def _pose(x: float, y: float, z: float,
           qx: float = 1.0, qy: float = 0.0,
           qz: float = 0.0, qw: float = 0.0) -> PoseStamped:
     p = PoseStamped()
-    p.header.frame_id     = 'panda_link0'
+    p.header.frame_id     = 'world'   # Pilz LIN requires the model frame (world == panda_link0)
     p.pose.position.x     = x
     p.pose.position.y     = y
     p.pose.position.z     = z
@@ -595,10 +592,9 @@ class PickAndPlaceNode(Node):
     def __init__(self):
         super().__init__('pick_and_place')
 
-        self.moveit: MoveItPy = moveit_py.MoveItPy(
+        self.moveit: MoveItPy = MoveItPy(
             node_name='pick_and_place')
         self.arm  = self.moveit.get_planning_component('panda_arm')
-        self.hand = self.moveit.get_planning_component('panda_hand')
 
         self._grasp_client = ActionClient(
             self, Grasp, '/franka_gripper/grasp')
@@ -638,7 +634,9 @@ class PickAndPlaceNode(Node):
         self.arm.set_start_state_to_current_state()
         self.arm.set_goal_state(
             pose_stamped_msg=target, pose_link='panda_hand')
-        params = PlanRequestParameters(self.moveit, 'panda_arm')
+        params = PlanRequestParameters(self.moveit)
+        params.planning_pipeline               = 'ompl'
+        params.planner_id                      = 'RRTConnectkConfigDefault'
         params.max_velocity_scaling_factor     = VEL_SCALE
         params.max_acceleration_scaling_factor = ACC_SCALE
         plan = self.arm.plan(single_plan_parameters=params)
@@ -646,16 +644,19 @@ class PickAndPlaceNode(Node):
             return False
         return bool(self.moveit.execute(plan.trajectory, controllers=[]))
 
-    def _cartesian_move(self, waypoints: list) -> bool:
+    def _cartesian_move(self, target: PoseStamped) -> bool:
+        # moveit_py has no compute_cartesian_path(); straight-line Cartesian
+        # motion is done with the Pilz industrial motion planner (LIN) instead.
         self.arm.set_start_state_to_current_state()
-        plan, fraction = self.arm.compute_cartesian_path(
-            waypoints=waypoints,
-            max_step=CART_STEP,
-            jump_threshold=0.0,
-        )
-        if fraction < MIN_FRAC:
-            self.get_logger().warn(
-                f'Cartesian path fraction {fraction:.2f} < {MIN_FRAC}')
+        self.arm.set_goal_state(pose_stamped_msg=target, pose_link='panda_hand')
+        params = PlanRequestParameters(self.moveit)
+        params.planning_pipeline               = 'pilz_industrial_motion_planner'
+        params.planner_id                      = 'LIN'
+        params.max_velocity_scaling_factor     = VEL_SCALE
+        params.max_acceleration_scaling_factor = ACC_SCALE
+        plan = self.arm.plan(single_plan_parameters=params)
+        if not plan:
+            self.get_logger().warn('Cartesian LIN plan failed')
             return False
         return bool(self.moveit.execute(plan.trajectory, controllers=[]))
 
@@ -666,12 +667,11 @@ class PickAndPlaceNode(Node):
 
     def state_pre_grasp(self) -> bool:
         self.get_logger().info('State: PRE-GRASP — moving above object.')
-        target = _pose(PICK_X, PICK_Y, PICK_Z + APPROACH_HEIGHT)
-        return self._plan_to_pose(target)
+        return self._plan_to_pose(_pose(PICK_X, PICK_Y, PICK_Z + APPROACH_HEIGHT))
 
     def state_descend(self) -> bool:
         self.get_logger().info('State: DESCEND — Cartesian straight down.')
-        return self._cartesian_move([_pose(PICK_X, PICK_Y, PICK_Z)])
+        return self._cartesian_move(_pose(PICK_X, PICK_Y, PICK_Z))
 
     def state_grasp(self) -> bool:
         self.get_logger().info('State: GRASP — closing gripper.')
@@ -679,17 +679,15 @@ class PickAndPlaceNode(Node):
 
     def state_lift(self) -> bool:
         self.get_logger().info('State: LIFT — Cartesian straight up.')
-        return self._cartesian_move(
-            [_pose(PICK_X, PICK_Y, PICK_Z + LIFT_HEIGHT)])
+        return self._cartesian_move(_pose(PICK_X, PICK_Y, PICK_Z + LIFT_HEIGHT))
 
     def state_transport(self) -> bool:
         self.get_logger().info('State: TRANSPORT — Cartesian straight to goal.')
-        return self._cartesian_move(
-            [_pose(PLACE_X, PLACE_Y, PLACE_Z + LIFT_HEIGHT)])
+        return self._cartesian_move(_pose(PLACE_X, PLACE_Y, PLACE_Z + LIFT_HEIGHT))
 
     def state_place(self) -> bool:
         self.get_logger().info('State: PLACE — lowering object.')
-        return self._cartesian_move([_pose(PLACE_X, PLACE_Y, PLACE_Z)])
+        return self._cartesian_move(_pose(PLACE_X, PLACE_Y, PLACE_Z))
 
     def state_release(self) -> bool:
         self.get_logger().info('State: RELEASE — opening gripper.')
@@ -697,8 +695,7 @@ class PickAndPlaceNode(Node):
 
     def state_retract(self) -> bool:
         self.get_logger().info('State: RETRACT — returning to home.')
-        return self._cartesian_move(
-            [_pose(PLACE_X, PLACE_Y, PLACE_Z + APPROACH_HEIGHT)])
+        return self._cartesian_move(_pose(PLACE_X, PLACE_Y, PLACE_Z + APPROACH_HEIGHT))
 
     # ── FSM runner ────────────────────────────────────────────────────────────
     def run(self) -> None:
@@ -1010,7 +1007,8 @@ print("Sequence complete!")
         file. Concatenate them in order (everything from <code>scene_setup.py</code> first, then the
         body of <code>replay_trajectory.py</code>) into, say, <code>pick_and_place_isaac.py</code>, then
         launch it with Isaac Sim's bundled Python:
-        <pre style="margin-top:0.5rem"><code class="language-bash">OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
+        <pre style="margin-top:0.5rem"><code class="language-bash">cat scene_setup.py replay_trajectory.py &gt; pick_and_place_isaac.py
+OMNI_KIT_ACCEPT_EULA=YES CUDA_VISIBLE_DEVICES=0 \
   /path/to/isaaclab/bin/python pick_and_place_isaac.py</code></pre>
         Replace <code>/path/to/isaaclab/bin/python</code> with the actual path to the Python
         interpreter inside your Isaac Sim conda environment.
